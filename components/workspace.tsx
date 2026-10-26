@@ -4,10 +4,11 @@ import { FormEvent, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { FileText, Globe, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
+import { MarkdownMessage } from "@/components/markdown-message"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { TopBar } from "@/components/top-bar"
 import { deleteJson, getJson, postForm, postJson } from "@/lib/client-api"
-import { formatDate } from "@/lib/format"
+import { citationLine, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, DocumentItem, DocumentType, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
 
@@ -487,8 +488,8 @@ function ChatPanel({
             <article key={message.id} className={cn("mx-auto max-w-2xl", mine ? "flex justify-end" : "")}>
               <div
                 className={cn(
-                  "max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap",
-                  mine ? "bg-accent text-accent-foreground" : "border border-line bg-card",
+                  "max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6",
+                  mine ? "bg-accent text-accent-foreground whitespace-pre-wrap" : "border border-line bg-card",
                 )}
               >
                 {message.role === "user" && message.authorName ? (
@@ -496,13 +497,16 @@ function ChatPanel({
                     {mine ? "You" : message.authorName}
                   </p>
                 ) : null}
-                {message.content}
+                {message.role === "assistant" ? <MarkdownMessage content={message.content} /> : message.content}
                 {message.sources && message.sources.length > 0 ? (
-                  <ul className="mt-3 space-y-2 border-t border-line pt-3">
+                  <ul className="mt-3 space-y-1 border-t border-line pt-3">
                     {message.sources.map((source, index) => (
-                      <li key={`${message.id}-${source.documentId}-${source.chunkIndex}`} className={cn("text-xs leading-5", mine ? "text-accent-foreground/80" : "text-muted")}>
-                        <span className={cn("font-semibold", mine ? "text-accent-foreground" : "text-foreground")}>[{index + 1}] {source.title}</span>
-                        <span className="mt-0.5 block">{source.excerpt}</span>
+                      <li
+                        key={`${message.id}-${source.documentId}-${source.chunkIndex}`}
+                        className="truncate text-xs leading-5 text-muted"
+                      >
+                        <span className="font-semibold text-foreground">[{index + 1}] {source.title}</span>
+                        {source.excerpt ? <span> · {citationLine(source.excerpt)}</span> : null}
                       </li>
                     ))}
                   </ul>

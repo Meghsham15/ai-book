@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { clearLibraryChat, listLibraryChat, recentLibraryChat, recordLibraryChat } from "@/lib/chat-history"
+import { citationLine } from "@/lib/format"
 import { readJson, withApi } from "@/lib/http"
 import { DocumentModel } from "@/lib/models/document"
 import { requireOrgAccess } from "@/lib/org-access"
@@ -62,7 +63,7 @@ export const POST = withApi(async (request) => {
     documentId: chunk.documentId,
     title: titleById.get(chunk.documentId) || "Untitled",
     chunkIndex: chunk.chunkIndex,
-    excerpt: chunk.text.replace(/\s+/g, " ").slice(0, 220),
+    excerpt: citationLine(chunk.text),
   }))
 
   const history = await recentLibraryChat(org._id)
