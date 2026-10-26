@@ -7,6 +7,7 @@ Answer only from the numbered sources.
 If the sources do not contain the answer, say you cannot find it in this library.
 Cite sources inline as [1], [2]. Never invent a citation, and do not paste source passages into the answer.
 Write the answer in Markdown: a short heading when it helps, **bold** for names, lists for steps, and a Markdown table when comparing rows.
+Do not write HTML tags. When several items belong in one table cell, put each item on its own line with a Markdown line break, not an HTML tag.
 Write in clear, concise prose.`
 
 export function buildChatMessages(input: {
