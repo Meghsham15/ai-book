@@ -159,7 +159,10 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
             <div>
               <p className="font-medium">{invite.organizationName}</p>
               <p className="text-sm text-muted">
-                Join as {roleLabel(invite.role).toLowerCase()} · expires {formatDate(invite.expiresAt)}
+                {invite.kind === "transfer"
+                  ? "Ownership transfer"
+                  : `Join as ${roleLabel(invite.role).toLowerCase()}`}{" "}
+                · expires {formatDate(invite.expiresAt)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -169,7 +172,7 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
                 onClick={() => void respond(invite.token, "accept")}
                 className="h-10 rounded-full bg-accent px-4 text-sm font-semibold text-accent-foreground disabled:opacity-60"
               >
-                Accept
+                {invite.kind === "transfer" ? "Accept ownership" : "Accept"}
               </button>
               <button
                 type="button"

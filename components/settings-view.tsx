@@ -110,7 +110,7 @@ function MembersCard({
   const [message, setMessage] = useState("")
   const [messageTone, setMessageTone] = useState<"ok" | "bad">("ok")
   const [pending, setPending] = useState(false)
-  const [nextOwner, setNextOwner] = useState(members.find((member) => !member.isOwner)?.userId ?? "")
+  const [ownerEmail, setOwnerEmail] = useState("")
 
   function showMessage(text: string, tone: "ok" | "bad" = "ok") {
     setMessage(text)
@@ -252,7 +252,7 @@ function MembersCard({
               <div>
                 <p className="font-medium">{invite.email}</p>
                 <p className="text-sm text-muted">
-                  {roleLabel(invite.role)} · invitation pending until {formatDate(invite.expiresAt)}
+                  {invite.kind === "transfer" ? "Ownership transfer" : roleLabel(invite.role)} · pending until {formatDate(invite.expiresAt)}
                 </p>
               </div>
               <button
@@ -263,7 +263,7 @@ function MembersCard({
                   setMessage("")
                   try {
                     await deleteJson(`/api/organizations/${org.id}/invitations?id=${invite.id}`)
-                    showMessage("Invitation cancelled.")
+                    showMessage(invite.kind === "transfer" ? "Ownership request cancelled." : "Invitation cancelled.")
                     router.refresh()
                   } catch (error) {
                     showMessage(error instanceof Error ? error.message : "The invitation could not be cancelled.", "bad")
@@ -273,7 +273,7 @@ function MembersCard({
                 }}
                 className="h-10 rounded-full px-3 text-sm text-danger"
               >
-                Cancel invite
+                {invite.kind === "transfer" ? "Cancel request" : "Cancel invite"}
               </button>
             </li>
           ))}
@@ -288,38 +288,44 @@ function MembersCard({
           className="mt-6 border-t border-line pt-5"
           onSubmit={async (event) => {
             event.preventDefault()
+            const invalid = emailError(ownerEmail)
+            if (invalid) {
+              showMessage(invalid, "bad")
+              return
+            }
             setPending(true)
             setMessage("")
             try {
-              await postJson(`/api/organizations/${org.id}/transfer`, { userId: nextOwner })
-              showMessage("Ownership transferred. You are still an admin.")
+              const result = await postJson<{ emailed: boolean; resent?: boolean; warning?: string }>(
+                `/api/organizations/${org.id}/transfer`,
+                { email: ownerEmail },
+              )
+              setOwnerEmail("")
+              if (result.warning) showMessage(result.warning, "bad")
+              else showMessage(result.resent ? "Ownership request sent again." : "Ownership request sent.")
               router.refresh()
             } catch (error) {
-              showMessage(error instanceof Error ? error.message : "Ownership could not be transferred.", "bad")
+              showMessage(error instanceof Error ? error.message : "The ownership request could not be sent.", "bad")
             } finally {
               setPending(false)
             }
           }}
         >
           <h3 className="font-medium">Transfer ownership</h3>
-          <p className="mt-1 text-sm text-muted">The new owner becomes an admin. Only you can do this.</p>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Enter an email, even if that person has never signed in. They get a request by email, and someone who already uses AI Book also sees it on their dashboard. Ownership moves only after they accept. You stay an admin.
+          </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-            <select
-              value={nextOwner}
-              onChange={(event) => setNextOwner(event.target.value)}
-              className="h-11 flex-1 rounded-full border border-line bg-white px-3 text-sm"
-            >
-              <option value="">Choose a member</option>
-              {members
-                .filter((member) => !member.isOwner)
-                .map((member) => (
-                  <option key={member.userId} value={member.userId}>
-                    {member.name} · {member.email}
-                  </option>
-                ))}
-            </select>
-            <button type="submit" disabled={pending || !nextOwner} className="h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-60">
-              Transfer
+            <input
+              type="email"
+              value={ownerEmail}
+              onChange={(event) => setOwnerEmail(event.target.value)}
+              placeholder="name@email.com"
+              required
+              className="h-11 flex-1 rounded-full border border-line bg-white px-4 text-sm outline-none focus:border-accent"
+            />
+            <button type="submit" disabled={pending || !ownerEmail.trim()} className="h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-60">
+              {pending ? "Sending…" : "Send request"}
             </button>
           </div>
         </form>

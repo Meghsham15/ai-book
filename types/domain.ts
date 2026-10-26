@@ -50,10 +50,13 @@ export type DocumentItem = {
   errorMessage?: string
 }
 
+export type InviteKind = "invite" | "transfer"
+
 export type PendingInvite = {
   id: string
   email: string
   role: Role
+  kind: InviteKind
   expiresAt: string
 }
 
@@ -61,6 +64,7 @@ export type DashboardInvitation = {
   token: string
   organizationName: string
   role: Role
+  kind: InviteKind
   expiresAt: string
 }
 

@@ -30,7 +30,7 @@ export const roleUpdateSchema = z.object({
 })
 
 export const transferSchema = z.object({
-  userId: z.string().trim().min(1),
+  email: emailField,
 })
 
 export const invitationTokenSchema = z.object({

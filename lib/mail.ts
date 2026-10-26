@@ -20,6 +20,7 @@ export async function sendInvitationEmail(input: {
   role: string
   inviteUrl: string
   expiresAt: Date
+  kind?: "invite" | "transfer"
 }) {
   const from = process.env.INVITE_FROM_EMAIL?.trim()
   const user = process.env.SMTP_USER?.trim() || from
@@ -28,6 +29,7 @@ export async function sendInvitationEmail(input: {
     throw new ConfigError("Add SMTP_PASS, a Gmail app password for the invitation sender, before emails can be sent.")
   }
 
+  const transfer = input.kind === "transfer"
   const role = roleLabel(input.role === "admin" || input.role === "manager" ? input.role : "member")
   const when = input.expiresAt.toLocaleDateString("en-US", {
     month: "long",
@@ -49,16 +51,29 @@ export async function sendInvitationEmail(input: {
     await transport.sendMail({
       from: `AI Book <${from}>`,
       to: input.to,
-      subject: `You're invited to ${input.organizationName} on AI Book`,
-      text: [
-        `You are invited to join ${input.organizationName} on AI Book as ${role}.`,
-        "",
-        "Open this link and sign in with Google using this same email address:",
-        input.inviteUrl,
-        "",
-        `This invitation expires on ${when}.`,
-      ].join("\n"),
-      html: `<p>You are invited to join <strong>${safeName}</strong> on AI Book as ${role}.</p><p><a href="${safeUrl}">Accept the invitation</a></p><p>Sign in with Google using this same email address. This invitation expires on ${when}.</p>`,
+      subject: transfer
+        ? `Ownership of ${input.organizationName} on AI Book`
+        : `You're invited to ${input.organizationName} on AI Book`,
+      text: transfer
+        ? [
+            `The owner of ${input.organizationName} wants to transfer that library to you.`,
+            "",
+            "Open this link and sign in with Google using this same email address:",
+            input.inviteUrl,
+            "",
+            `This request expires on ${when}.`,
+          ].join("\n")
+        : [
+            `You are invited to join ${input.organizationName} on AI Book as ${role}.`,
+            "",
+            "Open this link and sign in with Google using this same email address:",
+            input.inviteUrl,
+            "",
+            `This invitation expires on ${when}.`,
+          ].join("\n"),
+      html: transfer
+        ? `<p>The owner of <strong>${safeName}</strong> wants to transfer that library to you.</p><p><a href="${safeUrl}">Review the ownership request</a></p><p>Sign in with Google using this same email address. This request expires on ${when}.</p>`
+        : `<p>You are invited to join <strong>${safeName}</strong> on AI Book as ${role}.</p><p><a href="${safeUrl}">Accept the invitation</a></p><p>Sign in with Google using this same email address. This invitation expires on ${when}.</p>`,
     })
   } catch (error) {
     console.error("Invitation email failed", error instanceof Error ? error.message : "unknown error")
