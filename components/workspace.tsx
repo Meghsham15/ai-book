@@ -1,16 +1,18 @@
 "use client"
 
-import { FormEvent, useEffect, useRef, useState } from "react"
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { FileText, Globe, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
 import { MarkdownMessage } from "@/components/markdown-message"
 import { OrgSwitcher } from "@/components/org-switcher"
+import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
-import { deleteJson, getJson, postForm, postJson } from "@/lib/client-api"
-import { citationLine, formatDate } from "@/lib/format"
+import { deleteJson, getJson, postForm, postJson, readChatStream } from "@/lib/client-api"
+import { fileTooLargeMessage, MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { ChatMessage, DocumentItem, DocumentType, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
+import type { ChatMessage, ChatSource, DocumentItem, DocumentType, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
 
 const suggestions = [
   "Summarize what this library knows",
@@ -64,20 +66,23 @@ export function Workspace({
     <div className="flex h-dvh flex-col">
       <TopBar user={user}>
         <OrgSwitcher libraries={libraries} current={org.slug} />
-        <Link
-          href={`/org/${org.slug}/settings`}
-          className="grid h-9 w-9 place-items-center rounded-full text-muted transition hover:bg-foreground/5 hover:text-foreground"
-          aria-label="Library settings"
-        >
-          <Settings className="h-4 w-4" />
-        </Link>
+        <Tooltip label="Members, name, and delete">
+          <Link
+            href={`/org/${org.slug}/settings`}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-medium text-foreground transition hover:border-accent"
+          >
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Settings</span>
+            <span className="sr-only sm:hidden">Settings</span>
+          </Link>
+        </Tooltip>
       </TopBar>
       <div className="flex gap-2 border-b border-line px-4 py-2 lg:hidden">
         <PanelButton active={panel === "chat"} onClick={() => setPanel("chat")}>
           Ask
         </PanelButton>
         <PanelButton active={panel === "sources"} onClick={() => setPanel("sources")}>
-          Sources
+          Sources{sourceItems.length > 0 ? ` · ${sourceItems.length}` : ""}
         </PanelButton>
       </div>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[360px_minmax(0,1fr)]">
@@ -92,6 +97,10 @@ export function Workspace({
             currentUserName={user.name}
             reloadToken={reloadToken}
             refreshing={refreshing}
+            canWrite={canWrite}
+            readyCount={sourceItems.filter((source) => source.status === "ready").length}
+            indexingCount={sourceItems.filter((source) => source.status === "processing").length}
+            failedCount={sourceItems.filter((source) => source.status === "failed").length}
             onRefresh={() => void refreshLibrary()}
           />
         </section>
@@ -100,7 +109,7 @@ export function Workspace({
   )
 }
 
-function PanelButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+function PanelButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -129,15 +138,25 @@ function SourceColumn({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-white/10 px-5 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50">Library</p>
-        <h1 className="mt-1.5 truncate font-display text-3xl leading-none tracking-tight">{org.name}</h1>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50">Sources</p>
+        <Tooltip label={org.name} className="max-w-full">
+          <h1 className="mt-1.5 truncate font-display text-3xl leading-none tracking-tight">{org.name}</h1>
+        </Tooltip>
+        <p className="mt-2 text-xs text-sidebar-foreground/60">
+          {sources.filter((source) => source.status === "ready").length} ready to answer
+        </p>
       </div>
       {canWrite ? <SourceComposer organizationId={org.id} /> : null}
       <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {sourceError ? <li className="px-2 py-2 text-xs leading-5 text-orange-200">{sourceError}</li> : null}
         {sources.length === 0 ? (
-          <li className="px-2 py-8 text-sm leading-6 text-sidebar-foreground/65">
-            Nothing is in this library yet. Add a file, a public page, or a note.
+          <li className="mx-1 rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center">
+            <p className="font-display text-2xl tracking-tight">No sources yet</p>
+            <p className="mt-2 text-sm leading-6 text-sidebar-foreground/70">
+              {canWrite
+                ? "Add a PDF, a public page, or a note. Questions can use a source after it says Ready."
+                : "An admin or manager adds sources. You can ask once one says Ready."}
+            </p>
           </li>
         ) : (
           sources.map((source) => <SourceRow key={source.id} source={source} canWrite={canWrite} />)
@@ -156,9 +175,17 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
   const [url, setUrl] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
+  const [fileError, setFileError] = useState("")
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (mode === "file") {
+      const selected = new FormData(event.currentTarget).get("file")
+      if (selected instanceof File && selected.size > MAX_UPLOAD_BYTES) {
+        setFileError(fileTooLargeMessage())
+        return
+      }
+    }
     setPending(true)
     setError("")
     try {
@@ -193,27 +220,47 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
             ["text", "Note"],
           ] as const
         ).map(([value, label]) => (
-          <button
+          <Tooltip
             key={value}
-            type="button"
-            onClick={() => setMode(value)}
-            className={cn(
-              "rounded-full px-2 py-1.5 text-xs font-semibold",
-              mode === value ? "bg-white text-ink" : "text-sidebar-foreground/70",
-            )}
+            className="w-full"
+            label={value === "file" ? "PDF or text file, up to 50 MB" : value === "website" ? "A public web page" : "Text you paste in"}
           >
-            {label}
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode(value)
+                setFileError("")
+                setError("")
+              }}
+              className={cn(
+                "w-full rounded-full px-2 py-1.5 text-xs font-semibold",
+                mode === value ? "bg-white text-ink" : "text-sidebar-foreground/70",
+              )}
+            >
+              {label}
+            </button>
+          </Tooltip>
         ))}
       </div>
       {mode === "file" ? (
-        <input
-          name="file"
-          type="file"
-          required
-          accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf"
-          className="block w-full text-xs file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-ink"
-        />
+        <div className="space-y-2">
+          <input
+            name="file"
+            type="file"
+            required
+            accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf"
+            onChange={(event) => {
+              const selected = event.target.files?.[0]
+              setFileError(selected && selected.size > MAX_UPLOAD_BYTES ? fileTooLargeMessage() : "")
+            }}
+            className="block w-full text-xs file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-ink"
+          />
+          {fileError ? (
+            <p className="text-xs leading-5 text-orange-200" role="alert">
+              {fileError}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {mode === "website" ? (
         <input
@@ -246,7 +293,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
       ) : null}
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || Boolean(fileError)}
         className="h-10 w-full rounded-full bg-copper text-sm font-semibold text-white transition hover:bg-orange-700 disabled:opacity-60"
       >
         {pending ? "Indexing…" : "Add to library"}
@@ -261,17 +308,35 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
   const [confirming, setConfirming] = useState(false)
   const [pending, setPending] = useState(false)
   const Icon = source.type === "website" ? Globe : source.type === "text" ? NotebookPen : FileText
+  const kind = source.type === "website" ? "Site" : source.type === "text" ? "Note" : "File"
+  const status =
+    source.status === "ready"
+      ? { label: "Ready", detail: `${source.chunkCount} ${source.chunkCount === 1 ? "chunk" : "chunks"}`, tone: "bg-emerald-400/15 text-emerald-100" }
+      : source.status === "processing"
+        ? { label: "Indexing", detail: "Still reading this source", tone: "bg-copper/30 text-orange-100" }
+        : { label: "Failed", detail: "Could not be indexed", tone: "bg-red-400/15 text-orange-100" }
 
   return (
     <li className="rounded-2xl bg-white/6 px-3 py-3">
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-sidebar-foreground/70" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{source.title}</p>
+          <div className="flex items-start justify-between gap-2">
+            <Tooltip label={source.title} className="min-w-0">
+              <p className="min-w-0 truncate text-sm font-medium">{source.title}</p>
+            </Tooltip>
+            <Tooltip label={status.detail}>
+              <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", status.tone)}>
+                {status.label}
+              </span>
+            </Tooltip>
+          </div>
           <p className="mt-1 text-xs text-sidebar-foreground/55">
-            {source.status === "ready" ? `${source.chunkCount} chunks` : source.status} · {formatDate(source.createdAt)}
+            {kind} · {status.detail} · {formatDate(source.createdAt)}
           </p>
-          {source.errorMessage ? <p className="mt-1 text-xs leading-5 text-orange-200">{source.errorMessage}</p> : null}
+          {source.status === "failed" && source.errorMessage ? (
+            <p className="mt-1 text-xs leading-5 text-orange-200">{source.errorMessage}</p>
+          ) : null}
         </div>
       </div>
       {canWrite ? (
@@ -295,9 +360,11 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
               {pending ? "Removing…" : "Confirm remove"}
             </button>
           ) : (
-            <button type="button" onClick={() => setConfirming(true)} className="text-sidebar-foreground/55" aria-label={`Remove ${source.title}`}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip label={`Remove ${source.title}`}>
+              <button type="button" onClick={() => setConfirming(true)} className="text-sidebar-foreground/55" aria-label={`Remove ${source.title}`}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           )}
         </div>
       ) : null}
@@ -311,9 +378,53 @@ function UsageFooter({ org }: { org: OrgDetails }) {
   return (
     <div className="border-t border-white/10 px-5 py-4 text-xs leading-5 text-sidebar-foreground/65">
       <p>
-        {used}/{cap} sources · {org.usage.chunks}/{org.limits.maxChunks} chunks
+        {used}/{cap} sources · {org.usage.chunks}/{org.limits.maxChunks} chunks · {org.queries}{" "}
+        {org.queries === 1 ? "question" : "questions"}
       </p>
       <p className="mt-1">Search: {org.embeddingProvider === "pending" ? "chosen on first source" : org.embeddingProvider}</p>
+    </div>
+  )
+}
+
+function EmptyLibrary({
+  canWrite,
+  indexingCount,
+  failedCount,
+  onRefresh,
+  refreshing,
+}: {
+  canWrite: boolean
+  indexingCount: number
+  failedCount: number
+  onRefresh: () => void
+  refreshing: boolean
+}) {
+  const waiting = indexingCount > 0
+  const title = waiting ? "A source is still indexing" : failedCount > 0 ? "A source could not be indexed" : "Add a source before asking"
+  const detail = waiting
+    ? "The chat can answer after a source says Ready. Refresh in a moment."
+    : failedCount > 0
+      ? "Open Sources to read the error, then add the file again."
+      : canWrite
+        ? "Use Sources to add a PDF, a public page, or a note."
+        : "An admin or manager needs to add a source. You can ask after it says Ready."
+
+  return (
+    <div className="rounded-3xl border border-dashed border-line bg-card px-6 py-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Ask</p>
+      <h2 className="mt-3 font-display text-4xl tracking-tight">{title}</h2>
+      <p className="mt-3 max-w-md text-sm leading-6 text-muted">{detail}</p>
+      {waiting ? (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="mt-6 inline-flex h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -325,6 +436,10 @@ function ChatPanel({
   currentUserName,
   reloadToken,
   refreshing,
+  canWrite,
+  readyCount,
+  indexingCount,
+  failedCount,
   onRefresh,
 }: {
   organizationId: string
@@ -333,11 +448,17 @@ function ChatPanel({
   currentUserName: string
   reloadToken: number
   refreshing: boolean
+  canWrite: boolean
+  readyCount: number
+  indexingCount: number
+  failedCount: number
   onRefresh: () => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
   const [pending, setPending] = useState(false)
+  const [streamingId, setStreamingId] = useState("")
+  const [activeSource, setActiveSource] = useState("")
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -345,8 +466,8 @@ function ChatPanel({
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, pending])
+    endRef.current?.scrollIntoView({ behavior: streamingId ? "auto" : "smooth" })
+  }, [messages, pending, streamingId])
 
   useEffect(() => {
     let cancelled = false
@@ -397,18 +518,48 @@ function ChatPanel({
     }
     setMessages((current) => [...current, userMessage])
     setPending(true)
+    let assistantId = ""
+    let sources: ChatSource[] | undefined
     try {
-      const result = await postJson<{ answer: string; sources: ChatMessage["sources"] }>("/api/chat", {
-        query,
-        organizationId,
+      await readChatStream("/api/chat", { query, organizationId }, (event) => {
+        if (event.type === "sources") {
+          sources = event.sources
+          return
+        }
+        if (event.type === "delta") {
+          if (!assistantId) {
+            assistantId = crypto.randomUUID()
+            setStreamingId(assistantId)
+            setMessages((current) => [
+              ...current,
+              { id: assistantId, role: "assistant", content: event.text, authorName: "AI Book" },
+            ])
+            return
+          }
+          const id = assistantId
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === id ? { ...message, content: message.content + event.text } : message,
+            ),
+          )
+          return
+        }
+        if (event.type === "done" && assistantId) {
+          const id = assistantId
+          const nextSources = sources
+          setMessages((current) =>
+            current.map((message) => (message.id === id ? { ...message, sources: nextSources } : message)),
+          )
+        }
       })
-      setMessages((current) => [
-        ...current,
-        { id: crypto.randomUUID(), role: "assistant", content: result.answer, sources: result.sources, authorName: "AI Book" },
-      ])
     } catch (caught) {
+      if (assistantId) {
+        const id = assistantId
+        setMessages((current) => current.filter((message) => message.id !== id || message.content.trim()))
+      }
       setError(caught instanceof Error ? caught.message : "The question could not be answered.")
     } finally {
+      setStreamingId("")
       setPending(false)
     }
   }
@@ -416,7 +567,12 @@ function ChatPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-8">
-        <p className="text-sm text-muted">Shared with this library · newest 60 messages</p>
+        <div className="min-w-0">
+          <Tooltip label={libraryName} className="max-w-full">
+            <p className="truncate text-sm font-medium">Ask {libraryName}</p>
+          </Tooltip>
+          <p className="text-xs text-muted">Visible to everyone in this library</p>
+        </div>
         <div className="flex items-center gap-2">
           {confirmClear ? (
             <button
@@ -440,24 +596,28 @@ function ChatPanel({
               {clearing ? "Clearing…" : "Confirm clear"}
             </button>
           ) : (
+            <Tooltip label="Clears this chat for everyone in the library">
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                disabled={pending || refreshing || messages.length === 0}
+                className="inline-flex h-9 items-center rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-danger disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip label="Reload sources and the latest chat">
             <button
               type="button"
-              onClick={() => setConfirmClear(true)}
-              disabled={pending || refreshing || messages.length === 0}
-              className="inline-flex h-9 items-center rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-danger disabled:opacity-50"
+              onClick={onRefresh}
+              disabled={pending || refreshing || clearing}
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-accent disabled:opacity-50"
             >
-              Clear
+              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              Refresh
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={pending || refreshing || clearing}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-accent disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-            Refresh
-          </button>
+          </Tooltip>
         </div>
       </div>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-8 sm:px-8">
@@ -466,20 +626,33 @@ function ChatPanel({
         ) : null}
         {loaded && messages.length === 0 ? (
           <div className="mx-auto max-w-2xl pt-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Ask</p>
-            <h2 className="mt-3 font-display text-5xl tracking-tight">What do you want to know about {libraryName}?</h2>
-            <div className="mt-8 flex flex-wrap gap-2">
-              {suggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => void ask(suggestion)}
-                  className="rounded-full border border-line bg-card px-4 py-2 text-sm transition hover:border-accent"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+            {readyCount === 0 ? (
+              <EmptyLibrary
+                canWrite={canWrite}
+                indexingCount={indexingCount}
+                failedCount={failedCount}
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+              />
+            ) : (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Ask</p>
+                <h2 className="mt-3 font-display text-5xl tracking-tight">What do you want to know about {libraryName}?</h2>
+                <p className="mt-3 text-sm text-muted">{readyCount} {readyCount === 1 ? "source is" : "sources are"} ready.</p>
+                <div className="mt-8 flex flex-wrap gap-2">
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => void ask(suggestion)}
+                      className="rounded-full border border-line bg-card px-4 py-2 text-sm transition hover:border-accent"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           messages.map((message) => {
@@ -497,26 +670,41 @@ function ChatPanel({
                     {mine ? "You" : message.authorName}
                   </p>
                 ) : null}
-                {message.role === "assistant" ? <MarkdownMessage content={message.content} /> : message.content}
-                {message.sources && message.sources.length > 0 ? (
-                  <ul className="mt-3 space-y-1 border-t border-line pt-3">
-                    {message.sources.map((source, index) => (
-                      <li
-                        key={`${message.id}-${source.documentId}-${source.chunkIndex}`}
-                        className="truncate text-xs leading-5 text-muted"
-                      >
-                        <span className="font-semibold text-foreground">[{index + 1}] {source.title}</span>
-                        {source.excerpt ? <span> · {citationLine(source.excerpt)}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
+                {message.role === "assistant" ? (
+                  <>
+                    {message.content ? (
+                      <MarkdownMessage
+                        content={message.content}
+                        sources={message.sources}
+                        activeCitation={
+                          activeSource.startsWith(`${message.id}:`)
+                            ? Number(activeSource.slice(message.id.length + 1))
+                            : null
+                        }
+                        onCitation={
+                          streamingId !== message.id && message.sources?.length
+                            ? (index) => {
+                                if (index < 1 || index > (message.sources?.length ?? 0)) return
+                                const key = `${message.id}:${index}`
+                                setActiveSource((current) => (current === key ? "" : key))
+                              }
+                            : undefined
+                        }
+                      />
+                    ) : null}
+                    {streamingId === message.id ? (
+                      <span className="ml-0.5 inline-block h-4 w-px animate-pulse bg-foreground align-middle" aria-hidden />
+                    ) : null}
+                  </>
+                ) : (
+                  message.content
+                )}
               </div>
             </article>
             )
           })
         )}
-        {pending ? <p className="mx-auto max-w-2xl text-sm text-muted">Looking through the library…</p> : null}
+        {pending && !streamingId ? <p className="mx-auto max-w-2xl text-sm text-muted">Looking through the library…</p> : null}
         {error ? <p className="mx-auto max-w-2xl text-sm text-danger">{error}</p> : null}
         <div ref={endRef} />
       </div>
@@ -545,14 +733,16 @@ function ChatPanel({
             placeholder="Ask a question about this library"
             className="min-h-12 flex-1 resize-none rounded-3xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-accent"
           />
-          <button
-            type="submit"
-            disabled={pending || !draft.trim()}
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink text-white disabled:opacity-40"
-            aria-label="Send question"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          <Tooltip label={draft.trim() ? "Send question" : "Type a question to send"}>
+            <button
+              type="submit"
+              disabled={pending || !draft.trim()}
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink text-white disabled:opacity-40"
+              aria-label="Send question"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </Tooltip>
         </div>
       </form>
     </div>

@@ -10,11 +10,19 @@ export function formatDate(iso: string) {
 }
 
 export function citationLine(text: string, max = 96) {
+  return shortenPassage(text, max, 40)
+}
+
+export function passageExcerpt(text: string, max = 420) {
+  return shortenPassage(text, max, 80)
+}
+
+function shortenPassage(text: string, max: number, minBreak: number) {
   const line = text.replace(/\s+/g, " ").trim()
   if (line.length <= max) return line
   const cut = line.slice(0, max)
   const space = cut.lastIndexOf(" ")
-  const shortened = (space > 40 ? cut.slice(0, space) : cut).trimEnd()
+  const shortened = (space > minBreak ? cut.slice(0, space) : cut).trimEnd()
   return `${shortened}…`
 }
 

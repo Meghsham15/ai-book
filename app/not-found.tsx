@@ -5,8 +5,8 @@ export default function NotFound() {
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">404</p>
       <h1 className="mt-3 font-display text-5xl tracking-tight">That page is not in the library.</h1>
-      <Link href="/dashboard" className="mt-6 text-sm font-semibold text-accent">
-        Back to your libraries
+      <Link href="/dashboard" className="mt-6 inline-flex h-11 w-fit items-center rounded-full bg-ink px-5 text-sm font-semibold text-white">
+        Go to libraries
       </Link>
     </main>
   );

@@ -2,12 +2,12 @@ import "server-only"
 
 import { load } from "cheerio"
 import { extractText } from "unpdf"
-import { MAX_SOURCE_CHARS, MAX_UPLOAD_BYTES } from "@/lib/constants"
+import { fileTooLargeMessage, MAX_SOURCE_CHARS, MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { UserInputError } from "@/lib/errors"
 
 export async function extractUploadText(file: File) {
   if (file.size <= 0) throw new UserInputError("That file is empty.")
-  if (file.size > MAX_UPLOAD_BYTES) throw new UserInputError("Files must be 10 MB or smaller.")
+  if (file.size > MAX_UPLOAD_BYTES) throw new UserInputError(fileTooLargeMessage())
 
   const name = file.name.toLowerCase()
   const buffer = Buffer.from(await file.arrayBuffer())

@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
+import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
 import { deleteJson, patchJson, postJson } from "@/lib/client-api"
 import { canManageOrg, roleLabel } from "@/lib/permissions"
@@ -30,10 +31,15 @@ export function SettingsView({
     <div className="min-h-dvh">
       <TopBar user={user} />
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
-        <Link href={`/org/${org.slug}`} className="inline-flex items-center gap-2 text-sm text-muted hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-          Back to {org.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-muted hover:text-foreground">
+            Libraries
+          </Link>
+          <Link href={`/org/${org.slug}`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-accent">
+            <ArrowLeft className="h-4 w-4" />
+            Back to {org.name}
+          </Link>
+        </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Settings</p>
           <h1 className="mt-2 font-display text-5xl tracking-tight">{org.name}</h1>
@@ -42,8 +48,7 @@ export function SettingsView({
 
         {admin ? <RenameForm org={org} /> : null}
         <MembersCard org={org} members={members} invitations={invitations} currentUserId={user.id} admin={admin} />
-        {admin ? <LimitsForm org={org} /> : <LimitsReadout org={org} />}
-        <SearchCard org={org} />
+        {org.isOwner ? <DeleteLibrary org={org} /> : null}
       </main>
     </div>
   )
@@ -153,12 +158,18 @@ function MembersCard({
           <li key={member.userId} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-medium">
-                {member.name} {member.isOwner ? <span className="text-xs text-copper">Owner</span> : null}
+                {member.name}{" "}
+                {member.isOwner ? (
+                  <Tooltip label="The owner can delete this library">
+                    <span className="text-xs text-copper">Owner</span>
+                  </Tooltip>
+                ) : null}
               </p>
               <p className="text-sm text-muted">{member.email}</p>
             </div>
             {admin ? (
               <div className="flex items-center gap-2">
+                <Tooltip label={member.isOwner ? "Transfer ownership before changing the owner's role" : "Admin manages people. Manager adds sources. Member can ask."}>
                 <select
                   value={member.role}
                   disabled={member.isOwner || pending}
@@ -185,6 +196,7 @@ function MembersCard({
                     </option>
                   ))}
                 </select>
+                </Tooltip>
                 {!member.isOwner ? (
                   <button
                     type="button"
@@ -334,90 +346,54 @@ function MembersCard({
   )
 }
 
-function LimitsForm({ org }: { org: OrgDetails }) {
+function DeleteLibrary({ org }: { org: OrgDetails }) {
   const router = useRouter()
-  const [limits, setLimits] = useState(org.limits)
+  const [name, setName] = useState("")
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState("")
+  const confirmed = name.trim() === org.name
 
-  function update(key: keyof typeof limits, value: string) {
-    setLimits((current) => ({ ...current, [key]: Number(value) }))
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!confirmed) {
+      setMessage("Type the library name exactly to confirm.")
+      return
+    }
+    setPending(true)
+    setMessage("")
+    try {
+      await deleteJson(`/api/organizations/${org.id}`, { name: name.trim() })
+      router.push("/dashboard")
+      router.refresh()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The library could not be deleted.")
+      setPending(false)
+    }
   }
 
   return (
-    <form
-      className="rounded-3xl border border-line bg-card p-5"
-      onSubmit={async (event: FormEvent) => {
-        event.preventDefault()
-        setPending(true)
-        setMessage("")
-        try {
-          await patchJson(`/api/organizations/${org.id}`, limits)
-          setMessage("Limits saved.")
-          router.refresh()
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Limits could not be saved.")
-        } finally {
-          setPending(false)
-        }
-      }}
-    >
-      <h2 className="font-display text-3xl">Limits</h2>
-      <p className="mt-2 text-sm text-muted">
-        Using {org.usage.files} files, {org.usage.websites} websites, {org.usage.texts} notes, and {org.usage.chunks} chunks.
-      </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <LimitField label="Files" value={limits.maxFiles} onChange={(value) => update("maxFiles", value)} />
-        <LimitField label="Websites" value={limits.maxWebsites} onChange={(value) => update("maxWebsites", value)} />
-        <LimitField label="Notes" value={limits.maxTexts} onChange={(value) => update("maxTexts", value)} />
-        <LimitField label="Chunks" value={limits.maxChunks} onChange={(value) => update("maxChunks", value)} />
-      </div>
-      <button type="submit" disabled={pending} className="mt-4 h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-60">
-        {pending ? "Saving…" : "Save limits"}
-      </button>
-      {message ? <p className="mt-3 text-sm text-muted">{message}</p> : null}
-    </form>
-  )
-}
-
-function LimitField({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
-  return (
-    <label className="text-sm">
-      <span className="mb-1 block text-muted">{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={1}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-2xl border border-line bg-white px-3 outline-none focus:border-accent"
-      />
-    </label>
-  )
-}
-
-function LimitsReadout({ org }: { org: OrgDetails }) {
-  return (
-    <section className="rounded-3xl border border-line bg-card p-5 text-sm leading-6">
-      <h2 className="font-display text-3xl">Limits</h2>
-      <p className="mt-3 text-muted">
-        {org.usage.files}/{org.limits.maxFiles} files · {org.usage.websites}/{org.limits.maxWebsites} websites · {org.usage.texts}/{org.limits.maxTexts} notes · {org.usage.chunks}/{org.limits.maxChunks} chunks
-      </p>
-    </section>
-  )
-}
-
-function SearchCard({ org }: { org: OrgDetails }) {
-  return (
-    <section className="rounded-3xl border border-line bg-card p-5">
-      <h2 className="font-display text-3xl">Search index</h2>
+    <form onSubmit={onSubmit} className="rounded-3xl border border-danger/30 bg-card p-5">
+      <h2 className="font-display text-3xl">Delete library</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
-        Embeddings are {org.embeddingProvider === "pending" ? "chosen when the first source is added" : org.embeddingProvider}
-        {org.embeddingDimensions ? ` · ${org.embeddingDimensions} dimensions` : ""}. Retrieval mode is {org.vectorSearch}.
-        The provider stays with this library until every source is removed.
+        This removes {org.name} for everyone connected to it. Files, websites, notes, search chunks, chat, members, and pending invitations are deleted with it.
       </p>
-      {org.vectorSearch === "atlas" ? (
-        <pre className="mt-4 overflow-x-auto rounded-2xl bg-sidebar p-4 text-xs leading-5 text-sidebar-foreground">{org.atlasIndex}</pre>
-      ) : null}
-    </section>
+      <label className="mt-4 block text-sm">
+        <span className="mb-1 block text-muted">Type {org.name} to confirm</span>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoComplete="off"
+          className="h-11 w-full rounded-2xl border border-line bg-white px-3 outline-none focus:border-danger"
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={!confirmed || pending}
+        className="mt-4 h-11 rounded-full bg-danger px-5 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pending ? "Deleting…" : "Delete library"}
+      </button>
+      {message ? <p className="mt-3 text-sm text-danger">{message}</p> : null}
+    </form>
   )
 }

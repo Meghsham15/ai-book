@@ -37,13 +37,6 @@ export const invitationTokenSchema = z.object({
   token: z.string().trim().regex(/^[a-f0-9]{64}$/, "This invitation link is not valid."),
 })
 
-export const limitsSchema = z.object({
-  maxFiles: z.number().int().min(1).max(500),
-  maxWebsites: z.number().int().min(1).max(200),
-  maxTexts: z.number().int().min(1).max(1000),
-  maxChunks: z.number().int().min(100).max(100_000),
-})
-
 export const textSourceSchema = z.object({
   organizationId: z.string().trim().min(1),
   type: z.literal("text"),

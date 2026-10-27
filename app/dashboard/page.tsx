@@ -22,6 +22,7 @@ async function DashboardContent() {
       user={data.user}
       libraries={data.libraries}
       invitations={data.invitations}
+      overview={data.overview}
       configError={data.configError}
     />
   );

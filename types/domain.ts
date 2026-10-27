@@ -23,6 +23,20 @@ export type SessionUser = {
   image?: string
 }
 
+export type UsageDay = {
+  date: string
+  questions: number
+  documents: number
+  chunks: number
+}
+
+export type DashboardOverview = {
+  days: UsageDay[]
+  ready: number
+  processing: number
+  failed: number
+}
+
 export type LibraryCard = {
   id: string
   name: string
@@ -30,6 +44,7 @@ export type LibraryCard = {
   role: Role
   usage: Usage
   limits: Limits
+  queries: number
 }
 
 export type LibraryOption = {
@@ -89,6 +104,7 @@ export type OrgDetails = {
   embeddingDimensions: number
   vectorSearch: "memory" | "atlas"
   atlasIndex: string
+  queries: number
 }
 
 export type ChatSource = {

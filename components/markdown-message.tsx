@@ -1,23 +1,28 @@
 "use client"
 
+import { Children, cloneElement, isValidElement, useEffect, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import type { Components } from "react-markdown"
 import ReactMarkdown from "react-markdown"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
+import type { ChatSource } from "@/types/domain"
 
-const components: Components = {
+function markdownComponents(onCitation?: (index: number) => void, sources?: ChatSource[], activeCitation?: number | null): Components {
+  const cited = (children: ReactNode) => renderCitations(children, onCitation, sources, activeCitation)
+  return {
   h1: ({ children }) => (
-    <h2 className="mt-4 font-display text-2xl tracking-tight text-foreground first:mt-0">{children}</h2>
+    <h2 className="mt-4 font-display text-2xl tracking-tight text-foreground first:mt-0">{cited(children)}</h2>
   ),
   h2: ({ children }) => (
-    <h3 className="mt-4 font-display text-xl tracking-tight text-foreground first:mt-0">{children}</h3>
+    <h3 className="mt-4 font-display text-xl tracking-tight text-foreground first:mt-0">{cited(children)}</h3>
   ),
-  h3: ({ children }) => <h4 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h4>,
-  p: ({ children }) => <p className="mt-2 leading-6 first:mt-0">{children}</p>,
+  h3: ({ children }) => <h4 className="mt-3 text-base font-semibold text-foreground first:mt-0">{cited(children)}</h4>,
+  p: ({ children }) => <p className="mt-2 leading-6 first:mt-0">{cited(children)}</p>,
   ul: ({ children }) => <ul className="mt-2 list-disc space-y-1 pl-5 first:mt-0">{children}</ul>,
   ol: ({ children }) => <ol className="mt-2 list-decimal space-y-1 pl-5 first:mt-0">{children}</ol>,
-  li: ({ children }) => <li className="leading-6">{children}</li>,
+  li: ({ children }) => <li className="leading-6">{cited(children)}</li>,
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer" className="font-medium text-accent underline underline-offset-2">
       {children}
@@ -26,7 +31,7 @@ const components: Components = {
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em>{children}</em>,
   blockquote: ({ children }) => (
-    <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-muted first:mt-0">{children}</blockquote>
+    <blockquote className="mt-2 border-l-2 border-accent/40 pl-3 text-muted first:mt-0">{cited(children)}</blockquote>
   ),
   hr: () => <hr className="my-3 border-line" />,
   table: ({ children }) => (
@@ -35,8 +40,8 @@ const components: Components = {
     </div>
   ),
   thead: ({ children }) => <thead className="bg-background text-muted">{children}</thead>,
-  th: ({ children }) => <th className="border-b border-line px-3 py-2 text-left font-semibold">{children}</th>,
-  td: ({ children }) => <td className="border-b border-line px-3 py-2 align-top">{children}</td>,
+  th: ({ children }) => <th className="border-b border-line px-3 py-2 text-left font-semibold">{cited(children)}</th>,
+  td: ({ children }) => <td className="border-b border-line px-3 py-2 align-top">{cited(children)}</td>,
   pre: ({ children }) => (
     <pre className="mt-2 overflow-x-auto rounded-xl bg-sidebar px-3 py-2 text-xs leading-5 text-sidebar-foreground first:mt-0">
       {children}
@@ -48,12 +53,140 @@ const components: Components = {
     ) : (
       <code className="rounded bg-background px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
     ),
+  }
 }
 
-export function MarkdownMessage({ content }: { content: string }) {
+export function MarkdownMessage({
+  content,
+  sources,
+  activeCitation,
+  onCitation,
+}: {
+  content: string
+  sources?: ChatSource[]
+  activeCitation?: number | null
+  onCitation?: (index: number) => void
+}) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={components}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw, rehypeSanitize]}
+      components={markdownComponents(onCitation, sources, activeCitation)}
+    >
       {content}
     </ReactMarkdown>
+  )
+}
+
+function renderCitations(
+  children: ReactNode,
+  onCitation?: (index: number) => void,
+  sources?: ChatSource[],
+  activeCitation?: number | null,
+): ReactNode {
+  return Children.map(children, (child, childIndex) => {
+    if (typeof child === "string") return splitCitationText(child, onCitation, sources, activeCitation, childIndex)
+    if (isValidElement<{ children?: ReactNode }>(child) && child.props.children != null) {
+      return cloneElement(child, { children: renderCitations(child.props.children, onCitation, sources, activeCitation) })
+    }
+    return child
+  })
+}
+
+function splitCitationText(
+  text: string,
+  onCitation: ((index: number) => void) | undefined,
+  sources: ChatSource[] | undefined,
+  activeCitation: number | null | undefined,
+  childIndex: number,
+) {
+  const parts = text.split(/(\[\d+\])/g)
+  if (parts.length === 1) return text
+  return parts.map((part, index) => {
+    const match = /^\[(\d+)\]$/.exec(part)
+    if (!match) return part
+    const citation = Number(match[1])
+    if (!onCitation) return part
+    return (
+      <CitationMark
+        key={`${childIndex}-${index}`}
+        citation={citation}
+        source={sources?.[citation - 1]}
+        active={activeCitation === citation}
+        onClick={() => onCitation(citation)}
+      />
+    )
+  })
+}
+
+function CitationMark({
+  citation,
+  source,
+  active,
+  onClick,
+}: {
+  citation: number
+  source?: ChatSource
+  active: boolean
+  onClick: () => void
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [hover, setHover] = useState(false)
+  const [box, setBox] = useState<{ top: number; left: number; above: boolean } | null>(null)
+  const open = hover || active
+
+  useEffect(() => {
+    if (!open) return
+    function place() {
+      const rect = buttonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const above = rect.top > 180
+      setBox({
+        top: above ? rect.top - 8 : rect.bottom + 8,
+        left: Math.min(Math.max(rect.left + rect.width / 2, 140), window.innerWidth - 140),
+        above,
+      })
+    }
+    place()
+    window.addEventListener("scroll", place, true)
+    window.addEventListener("resize", place)
+    return () => {
+      window.removeEventListener("scroll", place, true)
+      window.removeEventListener("resize", place)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onFocus={() => setHover(true)}
+        onBlur={() => setHover(false)}
+        className={`mx-0.5 inline-flex h-5 items-center justify-center rounded-none border px-1 align-baseline font-mono text-[11px] font-semibold leading-none ${
+          active ? "border-accent bg-accent text-accent-foreground" : "border-accent/40 bg-accent/10 text-accent"
+        }`}
+        aria-expanded={open}
+        aria-label={source ? `Source ${citation}, ${source.title}` : `Source ${citation}`}
+      >
+        [{citation}]
+      </button>
+      {open && source && box
+        ? createPortal(
+            <span
+              role="tooltip"
+              className="pointer-events-none fixed z-30 w-64 rounded-xl border border-line bg-card px-3 py-2 text-left shadow-[0_10px_30px_rgba(28,25,23,0.12)]"
+              style={{ top: box.top, left: box.left, transform: `translate(-50%, ${box.above ? "-100%" : "0"})` }}
+            >
+              <span className="block truncate text-xs font-semibold text-foreground">{source.title}</span>
+              <span className="mt-1 line-clamp-4 block text-xs leading-5 text-muted">{source.excerpt}</span>
+            </span>,
+            document.body,
+          )
+        : null}
+    </>
   )
 }

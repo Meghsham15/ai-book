@@ -132,6 +132,9 @@ export function InviteView({
           {body}
           {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
         </section>
+        <Link href="/dashboard" className="mt-6 inline-flex text-sm font-medium text-accent">
+          Go to your libraries
+        </Link>
       </main>
     </div>
   )

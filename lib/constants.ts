@@ -5,7 +5,12 @@ export const DEFAULT_LIMITS = {
   maxChunks: 10_000,
 } as const
 
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+export const MAX_UPLOAD_MB = 50
+export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+export function fileTooLargeMessage() {
+  return `Files must be ${MAX_UPLOAD_MB} MB or smaller.`
+}
 export const MAX_SOURCE_CHARS = 120_000
 export const CHUNK_SIZE = 700
 export const CHUNK_OVERLAP = 100

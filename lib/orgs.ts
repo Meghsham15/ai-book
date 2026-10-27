@@ -4,10 +4,14 @@ import mongoose from "mongoose"
 import { DEFAULT_LIMITS } from "@/lib/constants"
 import { AuthzError, UserInputError } from "@/lib/errors"
 import { sameId } from "@/lib/limits"
+import { ChatTurn } from "@/lib/models/chat-turn"
+import { Chunk } from "@/lib/models/chunk"
+import { DocumentModel } from "@/lib/models/document"
+import { Invitation } from "@/lib/models/invitation"
 import { Membership } from "@/lib/models/membership"
 import { Organization } from "@/lib/models/organization"
 import { slugify } from "@/lib/slug"
-import type { Limits, Role } from "@/types/domain"
+import type { Role } from "@/types/domain"
 
 export async function createOrganization(userId: string, name: string) {
   const base = slugify(name)
@@ -46,12 +50,41 @@ export async function renameOrganization(orgId: mongoose.Types.ObjectId, name: s
   return org
 }
 
-export async function updateOrganizationLimits(orgId: mongoose.Types.ObjectId, limits: Limits) {
+export async function deleteOrganization(orgId: mongoose.Types.ObjectId, actorId: string) {
   const org = await Organization.findById(orgId)
   if (!org) throw new AuthzError("Organization not found.", 404)
-  org.limits = limits
-  await org.save()
-  return org
+  if (!sameId(org.ownerId, actorId)) {
+    throw new AuthzError("Only the owner can delete this library.", 403)
+  }
+
+  const session = await mongoose.startSession()
+  try {
+    await session.withTransaction(async () => {
+      await removeLibraryRecords(orgId, session)
+    })
+  } catch (error) {
+    if (!transactionsUnsupported(error)) throw error
+    await removeLibraryRecords(orgId)
+  } finally {
+    await session.endSession()
+  }
+}
+
+async function removeLibraryRecords(orgId: mongoose.Types.ObjectId, session?: mongoose.ClientSession) {
+  const filter = { organizationId: orgId }
+  const options = session ? { session } : undefined
+  await Chunk.deleteMany(filter, options)
+  await DocumentModel.deleteMany(filter, options)
+  await ChatTurn.deleteMany(filter, options)
+  await Invitation.deleteMany(filter, options)
+  await Membership.deleteMany(filter, options)
+  const removed = await Organization.deleteOne({ _id: orgId }, options)
+  if (removed.deletedCount === 0) throw new AuthzError("This library was already deleted.", 404)
+}
+
+function transactionsUnsupported(error: unknown) {
+  const message = error instanceof Error ? error.message : ""
+  return message.includes("Transaction numbers are only allowed") || message.includes("replica set")
 }
 
 export async function updateMemberRole(orgId: mongoose.Types.ObjectId, userId: string, role: Role) {

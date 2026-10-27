@@ -64,7 +64,7 @@ export async function reserveDocumentSlot(orgId: string, type: DocumentType) {
   const limits = readLimits(org?.limits)
   const limit = type === "file" ? limits.maxFiles : type === "website" ? limits.maxWebsites : limits.maxTexts
   throw new LimitError(
-    `This library already has the maximum of ${limit} ${sourceLabel(type)}. An admin can raise the limit in settings.`,
+    `This library already has the maximum of ${limit} ${sourceLabel(type)}. Remove a source to add another.`,
   )
 }
 
@@ -91,7 +91,7 @@ export async function reserveChunksOrThrow(orgId: string, count: number) {
   const limits = readLimits(org?.limits)
   const usage = readUsage(org?.usage)
   throw new LimitError(
-    `This library can store ${limits.maxChunks} chunks and already uses ${usage.chunks}. This source needs ${count} more. Remove a source or raise the limit in settings.`,
+    `This library can store ${limits.maxChunks} chunks and already uses ${usage.chunks}. This source needs ${count} more. Remove a source to make room.`,
   )
 }
 
