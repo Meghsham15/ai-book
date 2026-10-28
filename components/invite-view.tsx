@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
@@ -101,8 +102,9 @@ export function InviteView({
             type="button"
             disabled={pending}
             onClick={() => void respond("accept")}
-            className="h-11 rounded-none bg-accent px-5 text-sm font-semibold text-accent-foreground disabled:opacity-60"
+            className="inline-flex h-11 items-center gap-2 rounded-none bg-accent px-5 text-sm font-semibold text-accent-foreground disabled:opacity-60"
           >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             {pending ? (transfer ? "Accepting…" : "Joining…") : transfer ? "Accept ownership" : "Accept invite"}
           </button>
           <button

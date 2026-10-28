@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Loader2 } from "lucide-react"
 import { signIn } from "next-auth/react"
 import { BrandMark } from "@/components/brand"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -26,17 +27,17 @@ export function LoginScreen({
   const [pending, setPending] = useState(false)
 
   return (
-    <main className="grid min-h-dvh lg:grid-cols-[1.25fr_0.75fr]">
+    <main className="grid min-h-dvh overflow-x-hidden lg:grid-cols-[1.25fr_0.75fr]">
       <section className="flex flex-col justify-between px-6 py-8 sm:px-12 sm:py-12">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <BrandMark />
             <span className="font-display text-2xl leading-none">AI Book</span>
           </div>
-          <ThemeToggle />
+          <ThemeToggle compact />
         </div>
         <div className="max-w-xl py-12">
-          <h1 className="rise font-display text-5xl leading-[1.05] sm:text-6xl">
+          <h1 className="rise font-display text-4xl leading-[1.05] sm:text-6xl">
             Ask the library your team already wrote.
           </h1>
           <p className="mt-6 max-w-[42ch] text-base leading-7 text-muted">
@@ -67,7 +68,7 @@ export function LoginScreen({
             }}
             className="mt-8 flex h-12 w-full items-center justify-center gap-3 bg-card px-4 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:bg-background disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <GoogleMark />
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <GoogleMark />}
             {pending ? "Redirecting to Google…" : "Continue with Google"}
           </button>
         </div>

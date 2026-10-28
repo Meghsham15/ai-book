@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
+import { Loader2, Plus } from "lucide-react"
 import { SetupNotice } from "@/components/setup-notice"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
@@ -46,12 +46,12 @@ export function DashboardView({
   }
 
   return (
-    <div className="min-h-dvh">
+    <div className="min-h-dvh overflow-x-hidden">
       <TopBar user={user} />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="rise font-display text-5xl leading-none">Hello, {user.name.split(" ")[0] || "there"}</h1>
+            <h1 className="rise font-display text-4xl leading-none sm:text-5xl">Hello, {user.name.split(" ")[0] || "there"}</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
               Each library keeps its own sources, members, and chat. Creating one makes you the admin.
             </p>
@@ -75,7 +75,7 @@ export function DashboardView({
                 <li key={library.id} className="border-b border-line last:border-b-0">
                   <Link href={`/org/${library.slug}`} className="page-link grid gap-2 py-5 pl-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <div>
-                      <h2 className="font-display text-3xl leading-none">{library.name}</h2>
+                      <h2 className="break-words font-display text-3xl leading-none">{library.name}</h2>
                       <p className="mt-2 text-sm text-muted">
                         {sources} {sources === 1 ? "source" : "sources"}, {library.queries}{" "}
                         {library.queries === 1 ? "question" : "questions"}
@@ -119,7 +119,7 @@ export function DashboardView({
               disabled={pending || Boolean(configError)}
               className="inline-flex h-12 items-center justify-center gap-2 bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
             >
-              <Plus className="h-4 w-4" />
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" />}
               {pending ? "Creating…" : "Create library"}
             </button>
           </div>
@@ -177,8 +177,9 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
                 type="button"
                 disabled={pendingToken === invite.token}
                 onClick={() => void respond(invite.token, "accept")}
-                className="h-10 bg-accent px-4 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
+                className="inline-flex h-10 items-center gap-2 bg-accent px-4 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
               >
+                {pendingToken === invite.token ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 {invite.kind === "transfer" ? "Accept ownership" : "Accept"}
               </button>
               <button

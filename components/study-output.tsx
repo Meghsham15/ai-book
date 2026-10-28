@@ -18,7 +18,7 @@ function DataTable({ columns, rows, sources }: { columns: string[]; rows: string
   }
   return (
     <div className="overflow-x-auto rounded-3xl border border-line bg-card">
-      <table className="w-full border-collapse text-left text-sm">
+      <table className="w-full min-w-[32rem] border-collapse text-left text-sm">
         <thead className="bg-background text-muted">
           <tr>
             {columns.map((column, index) => (
@@ -87,7 +87,7 @@ function Quiz({ questions, sources }: { questions: QuizQuestion[]; sources?: Cha
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
         <p className="font-display text-2xl leading-none">Quiz</p>
         <p className="text-sm text-muted">
           {correctCount} correct · {answered.length} of {questions.length}
@@ -99,8 +99,8 @@ function Quiz({ questions, sources }: { questions: QuizQuestion[]; sources?: Cha
         const right = revealed && isCorrect(question, picked, written[index] ?? "")
         const answerText = question.format === "choice" ? question.choices[Number(question.answer)] : String(question.answer)
         return (
-          <div key={index} className="rounded-3xl border border-line bg-card px-5 py-5">
-            <p className="text-base leading-7">
+          <div key={index} className="rounded-3xl border border-line bg-card px-3 py-4 sm:px-5 sm:py-5">
+            <p className="break-words text-base leading-7">
               {index + 1}. {question.prompt}
             </p>
             {question.format === "choice" ? (
@@ -116,10 +116,10 @@ function Quiz({ questions, sources }: { questions: QuizQuestion[]; sources?: Cha
                       disabled={revealed}
                       onClick={() => setChoices((current) => ({ ...current, [index]: choiceIndex }))}
                       className={cn(
-                        "flex w-full rounded-2xl border px-3 py-2 text-left text-sm leading-6 transition disabled:cursor-default",
+                        "flex w-full break-words rounded-2xl border px-3 py-2.5 text-left text-sm leading-6 transition disabled:cursor-default",
                         showCorrect && "border-ready bg-ready/10",
                         showWrong && "border-danger bg-danger/10",
-                        !showCorrect && !showWrong && "border-line hover:-translate-y-0.5 hover:border-accent",
+                        !showCorrect && !showWrong && "border-line hover:border-accent sm:hover:-translate-y-0.5",
                       )}
                     >
                       {choice}

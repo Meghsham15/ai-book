@@ -15,10 +15,10 @@ export function TopBar({ user, children }: { user: SessionUser; children?: React
   const onLibraries = pathname === "/dashboard"
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-card/90 px-4 backdrop-blur-md sm:px-6">
-      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line bg-card/90 px-3 backdrop-blur-md sm:gap-3 sm:px-6">
+      <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
         <Tooltip label="Go to your libraries">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label="AI Book, go to libraries">
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5" aria-label="AI Book, go to libraries">
             <BrandMark />
             <span className="hidden font-display text-xl leading-none tracking-tight sm:inline">AI Book</span>
           </Link>
@@ -27,17 +27,18 @@ export function TopBar({ user, children }: { user: SessionUser; children?: React
           href="/dashboard"
           aria-current={onLibraries ? "page" : undefined}
           className={cn(
-            "inline-flex h-9 items-center gap-1.5 border-b-2 px-1 text-sm font-medium transition",
+            "inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-1 text-sm font-medium transition",
             onLibraries
               ? "border-accent text-foreground"
               : "border-transparent text-muted hover:text-foreground",
           )}
         >
           <Library className="h-4 w-4" />
-          Libraries
+          <span className="hidden sm:inline">Libraries</span>
+          <span className="sr-only sm:hidden">Libraries</span>
         </Link>
       </div>
-      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex min-w-0 items-center justify-end gap-1 sm:gap-2">
         {children}
         <UserMenu user={user} />
       </div>

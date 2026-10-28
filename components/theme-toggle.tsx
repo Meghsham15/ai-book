@@ -23,9 +23,24 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     applyTheme(next)
   }
 
+  if (compact) {
+    const dark = theme === "dark"
+    return (
+      <button
+        type="button"
+        aria-pressed={dark}
+        aria-label={dark ? "Switch to light" : "Switch to dark"}
+        onClick={() => choose(dark ? "light" : "dark")}
+        className="grid h-9 w-9 shrink-0 place-items-center border border-line text-foreground transition hover:border-accent"
+      >
+        {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </button>
+    )
+  }
+
   return (
     <div
-      className={cn("grid grid-cols-2 border border-line bg-card p-1", compact ? "h-9 w-[7.5rem]" : "h-11 w-full max-w-xs")}
+      className="grid h-11 w-full max-w-xs grid-cols-2 border border-line bg-card p-1"
       role="group"
       aria-label="Appearance"
     >

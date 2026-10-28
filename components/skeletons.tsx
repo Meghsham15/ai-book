@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react"
+
 export function PageSkeleton({ label }: { label: string }) {
   return (
     <div className="flex min-h-dvh flex-col">
@@ -5,7 +7,10 @@ export function PageSkeleton({ label }: { label: string }) {
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-6 py-10">
         <div className="h-10 w-56 animate-pulse rounded-full bg-line" />
         <div className="h-28 animate-pulse bg-card" />
-        <p className="text-sm text-muted">{label}</p>
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          {label}
+        </p>
       </div>
     </div>
   )
@@ -19,7 +24,10 @@ export function WorkspaceSkeleton() {
         <div className="hidden bg-sidebar lg:block" />
         <div className="p-8">
           <div className="h-8 w-52 animate-pulse rounded-full bg-line" />
-          <p className="mt-4 text-sm text-muted">Opening the library…</p>
+          <p className="mt-4 flex items-center gap-2 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Opening the library…
+          </p>
         </div>
       </div>
     </div>

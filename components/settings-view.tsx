@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
@@ -29,7 +29,7 @@ export function SettingsView({
   const admin = canManageOrg(org.role)
 
   return (
-    <div className="min-h-dvh">
+    <div className="min-h-dvh overflow-x-hidden">
       <TopBar user={user} />
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -42,7 +42,7 @@ export function SettingsView({
           </Link>
         </div>
         <div>
-          <h1 className="font-display text-5xl leading-none">{org.name}</h1>
+          <h1 className="break-words font-display text-4xl leading-none sm:text-5xl">{org.name}</h1>
           <p className="mt-2 text-sm text-muted">You are {roleLabel(org.role).toLowerCase()} here{org.isOwner ? " and the owner" : ""}.</p>
         </div>
 
@@ -95,6 +95,7 @@ function RenameForm({ org }: { org: OrgDetails }) {
           className="h-11 flex-1 rounded-none border border-line bg-card px-4 text-sm outline-none focus:border-accent"
         />
         <button type="submit" disabled={pending} className="h-11 rounded-none bg-ink px-5 text-sm font-semibold text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground disabled:translate-y-0 disabled:opacity-60">
+          {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
           {pending ? "Saving…" : "Save name"}
         </button>
       </div>
@@ -172,7 +173,7 @@ function MembersCard({
                   </Tooltip>
                 ) : null}
               </p>
-              <p className="text-sm text-muted">{member.email}</p>
+              <p className="break-all text-sm text-muted">{member.email}</p>
             </div>
             {admin ? (
               <div className="flex items-center gap-2">
@@ -260,6 +261,7 @@ function MembersCard({
             ))}
           </select>
           <button type="submit" disabled={pending} className="h-11 rounded-none bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60">
+            {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
             {pending ? "Sending…" : "Send invite"}
           </button>
         </form>
@@ -344,6 +346,7 @@ function MembersCard({
               className="h-11 flex-1 rounded-none border border-line bg-card px-4 text-sm outline-none focus:border-accent"
             />
             <button type="submit" disabled={pending || !ownerEmail.trim()} className="h-11 rounded-none bg-ink px-5 text-sm font-semibold text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground disabled:translate-y-0 disabled:opacity-60">
+              {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
               {pending ? "Sending…" : "Send request"}
             </button>
           </div>
@@ -398,6 +401,7 @@ function DeleteLibrary({ org }: { org: OrgDetails }) {
         disabled={!confirmed || pending}
         className="mt-4 h-11 rounded-none bg-danger-fill px-5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
       >
+        {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
         {pending ? "Deleting…" : "Delete library"}
       </button>
       {message ? <p className="mt-3 text-sm text-danger">{message}</p> : null}

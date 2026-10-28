@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { FileText, Globe, Loader2, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
+import { Check, Copy, FileText, Globe, Loader2, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
 import { MarkdownMessage } from "@/components/markdown-message"
 import { StudioBar, studioPlaceholder } from "@/components/studio-bar"
 import { StudyOutput } from "@/components/study-output"
@@ -66,13 +66,13 @@ export function Workspace({
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh flex-col overflow-x-hidden">
       <TopBar user={user}>
         <OrgSwitcher libraries={libraries} current={org.slug} />
         <Tooltip label="Members, name, and delete">
           <Link
             href={`/org/${org.slug}/settings`}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-medium text-foreground transition hover:border-accent"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm font-medium text-foreground transition hover:border-accent sm:px-3"
           >
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Settings</span>
@@ -307,7 +307,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
         disabled={pending || Boolean(fileError)}
         className="h-10 w-full rounded-full bg-copper text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:opacity-60 dark:text-[#1a0d0b]"
       >
-        {pending ? "Indexing…" : "Add to library"}
+        {pending ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />Indexing…</> : "Add to library"}
       </button>
       {error ? <p className="text-xs leading-5 text-orange-200">{error}</p> : null}
     </form>
@@ -368,7 +368,7 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
               }}
               className="text-xs font-semibold text-orange-200"
             >
-              {pending ? "Removing…" : "Confirm remove"}
+              {pending ? <><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" aria-hidden />Removing…</> : "Confirm remove"}
             </button>
           ) : (
             <Tooltip label={`Remove ${source.title}`}>
@@ -684,7 +684,7 @@ function ChatPanel({
               }}
               className="inline-flex h-9 items-center rounded-full bg-danger-fill px-3 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
             >
-              {clearing ? "Clearing…" : "Confirm clear"}
+              {clearing ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />Clearing…</> : "Confirm clear"}
             </button>
           ) : (
             <Tooltip label="Clears this chat for everyone in the library">
@@ -714,7 +714,10 @@ function ChatPanel({
       </div>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-6 sm:px-8 sm:py-8">
         {!loaded && messages.length === 0 ? (
-          <p className="mx-auto max-w-2xl text-sm text-muted">Loading chat…</p>
+          <p className="mx-auto flex max-w-2xl items-center gap-2 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Loading chat…
+          </p>
         ) : null}
         {loaded && messages.length === 0 ? (
           <div className="mx-auto max-w-2xl pt-8">
@@ -752,11 +755,12 @@ function ChatPanel({
             const writingStudy = message.id === streamingId && streamingStudy !== ""
             const wide = Boolean(study)
             const requestLine = mine ? message.content.match(/^(Report|Data table|Quiz) · [^\n]+/) : null
+            const canCopy = streamingId !== message.id && !study && !writingStudy && Boolean(message.content.trim())
             return (
             <article key={message.id} className={cn("mx-auto max-w-2xl", mine ? "flex justify-end" : "")}>
               <div
                 className={cn(
-                  wide ? "w-full" : "max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6",
+                  wide ? "w-full min-w-0" : "max-w-[90%] break-words rounded-3xl px-4 py-3 text-sm leading-6",
                   mine ? "bg-accent text-accent-foreground whitespace-pre-wrap" : wide ? "" : "reading border border-line bg-card",
                 )}
               >
@@ -765,10 +769,14 @@ function ChatPanel({
                     {mine ? "You" : message.authorName}
                   </p>
                 ) : null}
+                <Copyable enabled={canCopy} onDark={mine}>
                 {message.role === "assistant" ? (
                   <>
                     {writingStudy ? (
-                      <p className="text-sm text-muted">{streamingStudy === "table" ? "Writing the table…" : "Writing the quiz…"}</p>
+                      <p className="flex items-center gap-2 text-sm text-muted">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        {streamingStudy === "table" ? "Writing the table…" : "Writing the quiz…"}
+                      </p>
                     ) : study ? (
                       <StudyOutput study={study} sources={message.sources} />
                     ) : message.content ? (
@@ -803,12 +811,18 @@ function ChatPanel({
                 ) : (
                   message.content
                 )}
+                </Copyable>
               </div>
             </article>
             )
           })
         )}
-        {pending && !streamingId ? <p className="mx-auto max-w-2xl text-sm text-muted">{searchLabel}</p> : null}
+        {pending && !streamingId ? (
+          <p className="mx-auto flex max-w-2xl items-center gap-2 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            {searchLabel}
+          </p>
+        ) : null}
         {error ? <p className="mx-auto max-w-2xl text-sm text-danger">{error}</p> : null}
         <div ref={endRef} />
       </div>
@@ -925,5 +939,41 @@ function ChatPanel({
         </div>
       </form>
     </div>
+  )
+}
+
+function Copyable({ children, enabled, onDark }: { children: ReactNode; enabled: boolean; onDark?: boolean }) {
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
+
+  function copy() {
+    const text = bodyRef.current?.innerText.replace(/\n{3,}/g, "\n\n").trim() ?? ""
+    if (!text) return
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
+  return (
+    <>
+      <div ref={bodyRef}>{children}</div>
+      {enabled ? (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? "Copied" : "Copy message"}
+            className={cn(
+              "inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium transition",
+              onDark ? "text-accent-foreground/85 hover:bg-white/15" : "text-muted hover:bg-background hover:text-foreground",
+            )}
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      ) : null}
+    </>
   )
 }

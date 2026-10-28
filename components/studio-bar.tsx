@@ -141,7 +141,7 @@ function StudioChoice({
       onClick={onClick}
       className={cn(
         "inline-flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-medium transition disabled:opacity-50 sm:h-9",
-        pressed ? "border-ink bg-ink text-on-ink" : "border-line bg-card hover:-translate-y-0.5 hover:border-accent",
+        pressed ? "border-ink bg-ink text-on-ink" : "border-line bg-card hover:border-accent sm:hover:-translate-y-0.5",
       )}
     >
       {icon}
@@ -170,7 +170,7 @@ function Chip({
       onClick={onClick}
       className={cn(
         "inline-flex h-9 items-center rounded-full border px-3 text-xs font-medium transition disabled:opacity-50 sm:h-8",
-        pressed ? "border-accent bg-accent/15 text-foreground" : "border-line bg-card hover:-translate-y-0.5 hover:border-accent",
+        pressed ? "border-accent bg-accent/15 text-foreground" : "border-line bg-card hover:border-accent sm:hover:-translate-y-0.5",
       )}
     >
       {children}

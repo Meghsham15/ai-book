@@ -9,13 +9,13 @@ export function OrgSwitcher({ libraries, current }: { libraries: LibraryOption[]
   if (libraries.length === 0) return null
 
   return (
-    <label className="min-w-0">
+    <label className="min-w-0 max-w-[5rem] sm:max-w-56">
       <span className="sr-only">Switch library</span>
-      <Tooltip label="Switch library" className="min-w-0">
+      <Tooltip label="Switch library" className="block min-w-0">
         <select
           value={current}
           onChange={(event) => router.push(`/org/${event.target.value}`)}
-          className="max-w-44 truncate border border-line bg-card px-3 py-2 text-sm outline-none transition focus:border-accent sm:max-w-64"
+          className="h-9 w-full min-w-0 truncate border border-line bg-card px-2 text-sm outline-none transition focus:border-accent sm:px-3"
         >
         {libraries.map((library) => (
           <option key={library.id} value={library.slug}>
