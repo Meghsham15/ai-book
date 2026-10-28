@@ -31,7 +31,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="grid h-9 w-9 place-items-center rounded-full text-muted transition hover:bg-foreground/5 hover:text-foreground"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted transition hover:bg-foreground/5 hover:text-foreground sm:h-9 sm:w-9"
           aria-label="Sign out"
         >
           <LogOut className="h-4 w-4" />

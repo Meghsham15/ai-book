@@ -1,6 +1,6 @@
 "use client"
 
-import { Children, cloneElement, isValidElement, useEffect, useRef, useState, type ReactNode } from "react"
+import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import type { Components } from "react-markdown"
 import ReactMarkdown from "react-markdown"
@@ -13,8 +13,8 @@ import "katex/dist/katex.min.css"
 import { citationDetail } from "@/lib/format"
 import type { ChatSource } from "@/types/domain"
 
-function markdownComponents(onCitation?: (index: number) => void, sources?: ChatSource[], activeCitation?: number | null): Components {
-  const cited = (children: ReactNode) => renderCitations(children, onCitation, sources, activeCitation)
+function markdownComponents(interactive: boolean, sources: ChatSource[] | undefined, nextMarkId: () => string): Components {
+  const cited = (children: ReactNode) => renderCitations(children, interactive, sources, nextMarkId)
   return {
   h1: ({ children }) => (
     <h2 className="mt-4 font-display text-2xl tracking-tight text-foreground first:mt-0">{cited(children)}</h2>
@@ -48,7 +48,7 @@ function markdownComponents(onCitation?: (index: number) => void, sources?: Chat
   td: ({ children }) => <td className="border-b border-line px-3 py-2 align-top">{cited(children)}</td>,
   pre: ({ children }) => (
     <pre className="mt-2 overflow-x-auto whitespace-pre rounded-xl border border-line bg-card px-4 py-3 font-mono text-sm leading-5 text-foreground first:mt-0">
-      {children}
+      {cited(children)}
     </pre>
   ),
   code: ({ className, children }) =>
@@ -60,25 +60,64 @@ function markdownComponents(onCitation?: (index: number) => void, sources?: Chat
   }
 }
 
+const CitationTips = createContext<{
+  pinnedId: string | null
+  toggle: (id: string) => void
+}>({ pinnedId: null, toggle: () => {} })
+
 export function MarkdownMessage({
   content,
   sources,
-  activeCitation,
-  onCitation,
+  interactive = false,
 }: {
   content: string
   sources?: ChatSource[]
-  activeCitation?: number | null
-  onCitation?: (index: number) => void
+  interactive?: boolean
 }) {
+  const [pinnedId, setPinnedId] = useState<string | null>(null)
+  const markSeq = useRef(0)
+  const nextMarkId = useCallback(() => {
+    markSeq.current += 1
+    return `citation-${markSeq.current}`
+  }, [])
+  markSeq.current = 0
+  const components = useMemo(
+    () => markdownComponents(interactive, sources, nextMarkId),
+    [interactive, sources, nextMarkId],
+  )
+  const toggle = useCallback((id: string) => {
+    setPinnedId((current) => (current === id ? null : id))
+  }, [])
+
+  useEffect(() => {
+    if (!pinnedId) return
+    function down(event: PointerEvent) {
+      const target = event.target
+      const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null
+      if (element?.closest("[data-citation-mark]")) return
+      setPinnedId(null)
+    }
+    function key(event: KeyboardEvent) {
+      if (event.key === "Escape") setPinnedId(null)
+    }
+    document.addEventListener("pointerdown", down)
+    document.addEventListener("keydown", key)
+    return () => {
+      document.removeEventListener("pointerdown", down)
+      document.removeEventListener("keydown", key)
+    }
+  }, [pinnedId])
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeRaw, rehypeSanitize, [rehypeKatex, { strict: "ignore" }]]}
-      components={markdownComponents(onCitation, sources, activeCitation)}
-    >
-      {content}
-    </ReactMarkdown>
+    <CitationTips.Provider value={{ pinnedId, toggle }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeRaw, rehypeSanitize, [rehypeKatex, { strict: "ignore" }]]}
+        components={components}
+      >
+        {content}
+      </ReactMarkdown>
+    </CitationTips.Provider>
   )
 }
 
@@ -87,82 +126,83 @@ function blockCode(className: string | undefined, children: ReactNode) {
   return Children.toArray(children).some((child) => typeof child === "string" && child.includes("\n"))
 }
 
-function renderCitations(
-  children: ReactNode,
-  onCitation?: (index: number) => void,
-  sources?: ChatSource[],
-  activeCitation?: number | null,
-): ReactNode {
-  return Children.map(children, (child, childIndex) => {
-    if (typeof child === "string") return splitCitationText(child, onCitation, sources, activeCitation, childIndex)
+function renderCitations(children: ReactNode, interactive: boolean, sources: ChatSource[] | undefined, nextMarkId: () => string): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === "string") return splitCitationText(child, interactive, sources, nextMarkId)
     if (isValidElement<{ children?: ReactNode }>(child) && child.props.children != null) {
-      return cloneElement(child, { children: renderCitations(child.props.children, onCitation, sources, activeCitation) })
+      return cloneElement(child, { children: renderCitations(child.props.children, interactive, sources, nextMarkId) })
     }
     return child
   })
 }
 
-function splitCitationText(
-  text: string,
-  onCitation: ((index: number) => void) | undefined,
-  sources: ChatSource[] | undefined,
-  activeCitation: number | null | undefined,
-  childIndex: number,
-) {
+function splitCitationText(text: string, interactive: boolean, sources: ChatSource[] | undefined, nextMarkId: () => string) {
   const parts = text.split(/(\[\d+\])/g)
   if (parts.length === 1) return text
-  return parts.map((part, index) => {
+  return parts.map((part) => {
     const match = /^\[(\d+)\]$/.exec(part)
     if (!match) return part
     const citation = Number(match[1])
-    if (!onCitation) return part
-    return (
-      <CitationMark
-        key={`${childIndex}-${index}`}
-        citation={citation}
-        source={sources?.[citation - 1]}
-        active={activeCitation === citation}
-        onClick={() => onCitation(citation)}
-      />
-    )
+    const source = sources?.[citation - 1]
+    if (!interactive || !source) return part
+    const markId = nextMarkId()
+    return <CitationMark key={markId} markId={markId} citation={citation} source={source} />
   })
 }
 
-function CitationMark({
-  citation,
-  source,
-  active,
-  onClick,
-}: {
-  citation: number
-  source?: ChatSource
-  active: boolean
-  onClick: () => void
-}) {
+function keepScroll(node: HTMLElement) {
+  const scroller = scrollParent(node)
+  const top = scroller?.scrollTop ?? 0
+  const page = window.scrollY
+  const restore = () => {
+    if (scroller && Math.abs(scroller.scrollTop - top) > 1) scroller.scrollTop = top
+    if (Math.abs(window.scrollY - page) > 1) window.scrollTo(0, page)
+  }
+  requestAnimationFrame(restore)
+  window.setTimeout(restore, 0)
+  window.setTimeout(restore, 320)
+}
+
+function scrollParent(node: HTMLElement) {
+  let current = node.parentElement
+  while (current) {
+    const style = getComputedStyle(current)
+    if (/(auto|scroll)/.test(style.overflowY) && current.scrollHeight > current.clientHeight + 1) return current
+    current = current.parentElement
+  }
+  return null
+}
+
+function CitationMark({ markId, citation, source }: { markId: string; citation: number; source: ChatSource }) {
+  const tips = useContext(CitationTips)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [hover, setHover] = useState(false)
+  const [focus, setFocus] = useState(false)
   const [box, setBox] = useState<{ top: number; left: number; above: boolean } | null>(null)
-  const open = hover || active
-  const place = citationDetail(source?.excerpt ?? "")
+  const pinned = tips.pinnedId === markId
+  const open = tips.pinnedId ? pinned : hover || focus
+  const place = citationDetail(source.excerpt ?? "")
 
   useEffect(() => {
     if (!open) return
-    function place() {
+    function position() {
       const rect = buttonRef.current?.getBoundingClientRect()
       if (!rect) return
       const above = rect.top > 180
+      const half = 128
+      const margin = 12
       setBox({
         top: above ? rect.top - 8 : rect.bottom + 8,
-        left: Math.min(Math.max(rect.left + rect.width / 2, 140), window.innerWidth - 140),
+        left: Math.min(Math.max(rect.left + rect.width / 2, half + margin), window.innerWidth - half - margin),
         above,
       })
     }
-    place()
-    window.addEventListener("scroll", place, true)
-    window.addEventListener("resize", place)
+    position()
+    window.addEventListener("scroll", position, true)
+    window.addEventListener("resize", position)
     return () => {
-      window.removeEventListener("scroll", place, true)
-      window.removeEventListener("resize", place)
+      window.removeEventListener("scroll", position, true)
+      window.removeEventListener("resize", position)
     }
   }, [open])
 
@@ -171,24 +211,37 @@ function CitationMark({
       <button
         ref={buttonRef}
         type="button"
-        onClick={onClick}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        onFocus={() => setHover(true)}
-        onBlur={() => setHover(false)}
-        className={`mx-0.5 inline-flex h-5 items-center justify-center border px-1 align-baseline text-[11px] font-semibold leading-none transition hover:-translate-y-px ${
-          active ? "border-copper bg-copper text-white dark:text-[#1a0d0b]" : "border-copper/40 bg-copper/10 text-copper"
+        data-citation-mark=""
+        onPointerDown={(event) => {
+          keepScroll(event.currentTarget)
+          if (event.pointerType !== "mouse") event.preventDefault()
+        }}
+        onClick={() => tips.toggle(markId)}
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "mouse") return
+          if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return
+          setHover(true)
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse") setHover(false)
+        }}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(":focus-visible")) setFocus(true)
+        }}
+        onBlur={() => setFocus(false)}
+        className={`mx-0.5 inline-flex h-5 touch-manipulation items-center justify-center border px-1 align-baseline text-[11px] font-semibold leading-none transition [@media(hover:hover)]:hover:-translate-y-px ${
+          open ? "border-copper bg-copper text-white dark:text-[#1a0d0b]" : "border-copper/40 bg-copper/10 text-copper"
         }`}
         aria-expanded={open}
-        aria-label={source ? `Source ${citation}, ${source.title}` : `Source ${citation}`}
+        aria-label={`Source ${citation}, ${source.title}${place ? `, ${place}` : ""}`}
       >
         [{citation}]
       </button>
-      {open && source && box
+      {open && box
         ? createPortal(
             <span
               role="tooltip"
-              className="pointer-events-none fixed z-30 w-64 border border-line bg-card px-3 py-2 text-left shadow-[0_16px_40px_-24px_rgba(23,32,51,0.45)]"
+              className="pointer-events-none fixed z-30 w-64 max-w-[calc(100vw-1.5rem)] border border-line bg-card px-3 py-2 text-left shadow-[0_16px_40px_-24px_rgba(23,32,51,0.45)]"
               style={{ top: box.top, left: box.left, transform: `translate(-50%, ${box.above ? "-100%" : "0"})` }}
             >
               <span className="block truncate text-xs font-semibold text-foreground">{source.title}</span>

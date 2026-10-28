@@ -31,7 +31,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         aria-pressed={dark}
         aria-label={dark ? "Switch to light" : "Switch to dark"}
         onClick={() => choose(dark ? "light" : "dark")}
-        className="grid h-9 w-9 shrink-0 place-items-center border border-line text-foreground transition hover:border-accent"
+        className="grid h-8 w-8 shrink-0 place-items-center border border-line text-foreground transition hover:border-accent sm:h-9 sm:w-9"
       >
         {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>

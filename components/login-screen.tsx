@@ -30,10 +30,7 @@ export function LoginScreen({
     <main className="grid min-h-dvh overflow-x-hidden lg:grid-cols-[1.25fr_0.75fr]">
       <section className="flex flex-col justify-between px-6 py-8 sm:px-12 sm:py-12">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <BrandMark />
-            <span className="font-display text-2xl leading-none">AI Book</span>
-          </div>
+          <BrandMark lockup />
           <ThemeToggle compact />
         </div>
         <div className="max-w-xl py-12">
@@ -43,14 +40,14 @@ export function LoginScreen({
           <p className="mt-6 max-w-[42ch] text-base leading-7 text-muted">
             Files, pages, and notes stay together. Every answer points back to the passage it came from.
           </p>
-          <article className="rise-late mt-10 max-w-md border border-line bg-card px-5 py-5 shadow-[0_24px_50px_-32px_rgba(26,33,64,0.65)]">
+          <article className="mt-10 max-w-md border border-line bg-card px-5 py-5 shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--accent)_55%,transparent)]">
             <p className="font-display text-2xl leading-snug">The handover window is 14 days after the contract ends.</p>
             <p className="mt-4 inline-flex items-center gap-2 border-l-4 border-copper pl-3 text-sm text-muted">Handbook, page 4</p>
           </article>
         </div>
         <p className="max-w-md text-sm leading-6 text-muted">Sources stay inside the library that owns them.</p>
       </section>
-      <section className="flex items-center bg-sidebar px-6 py-16 text-sidebar-foreground sm:px-12">
+      <section className="flex items-center border-line bg-sidebar px-6 py-16 text-sidebar-foreground sm:px-12 lg:border-l">
         <div className="w-full max-w-sm">
           <h2 className="font-display text-4xl leading-none">Sign in</h2>
           <p className="mt-3 text-sm leading-6 text-sidebar-foreground/75">Use the Google account that should see your libraries.</p>
@@ -66,7 +63,7 @@ export function LoginScreen({
               setPending(true)
               void signIn("google", { callbackUrl })
             }}
-            className="mt-8 flex h-12 w-full items-center justify-center gap-3 bg-card px-4 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:bg-background disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-8 flex h-12 w-full items-center justify-center gap-3 border border-line bg-card px-4 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <GoogleMark />}
             {pending ? "Redirecting to Google…" : "Continue with Google"}

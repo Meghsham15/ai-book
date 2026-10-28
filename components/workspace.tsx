@@ -72,7 +72,7 @@ export function Workspace({
         <Tooltip label="Members, name, and delete">
           <Link
             href={`/org/${org.slug}/settings`}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm font-medium text-foreground transition hover:border-accent sm:px-3"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-foreground transition hover:border-accent sm:h-9 sm:w-auto sm:px-3"
           >
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Settings</span>
@@ -88,11 +88,11 @@ export function Workspace({
           Sources{sourceItems.length > 0 ? ` · ${sourceItems.length}` : ""}
         </PanelButton>
       </div>
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={cn("min-h-0 flex-col bg-sidebar text-sidebar-foreground", panel === "sources" ? "flex" : "hidden", "lg:flex")}>
+      <div className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className={cn("min-h-0 w-full min-w-0 flex-col overflow-x-hidden bg-sidebar text-sidebar-foreground", panel === "sources" ? "flex" : "hidden", "lg:flex")}>
           <SourceColumn org={org} sources={sourceItems} canWrite={canWrite} sourceError={sourceError} />
         </section>
-        <section className={cn("min-h-0 flex-col", panel === "chat" ? "flex" : "hidden", "lg:flex")}>
+        <section className={cn("min-h-0 min-w-0 flex-col", panel === "chat" ? "flex" : "hidden", "lg:flex")}>
           <ChatPanel
             organizationId={org.id}
             libraryName={org.name}
@@ -147,8 +147,8 @@ function SourceColumn({
   sourceError: string
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-white/10 px-5 py-4">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="border-b border-white/10 px-4 py-4 sm:px-5">
         <p className="text-sm text-sidebar-foreground/60">Sources</p>
         <Tooltip label={org.name} className="max-w-full">
           <h1 className="mt-1.5 truncate font-display text-3xl leading-none tracking-tight">{org.name}</h1>
@@ -187,6 +187,8 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [fileError, setFileError] = useState("")
+  const [fileName, setFileName] = useState("")
+  const fileRef = useRef<HTMLInputElement>(null)
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -212,6 +214,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
       setTitle("")
       setContent("")
       setUrl("")
+      setFileName("")
       router.refresh()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The source could not be added.")
@@ -222,8 +225,8 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 border-b border-white/10 px-4 py-4">
-      <div className="grid grid-cols-3 gap-1 rounded-full bg-white/8 p-1">
+    <form onSubmit={onSubmit} className="min-w-0 space-y-3 border-b border-white/10 px-4 py-4">
+      <div className="grid w-full min-w-0 grid-cols-3 gap-1 rounded-full bg-white/8 p-1">
         {(
           [
             ["file", "File"],
@@ -233,7 +236,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
         ).map(([value, label]) => (
           <Tooltip
             key={value}
-            className="w-full"
+            className="flex min-w-0"
             label={value === "file" ? `PDF or text file, up to ${MAX_UPLOAD_MB} MB` : value === "website" ? "A public web page" : "Text you paste in"}
           >
             <button
@@ -244,7 +247,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
                 setError("")
               }}
               className={cn(
-                "w-full rounded-full px-2 py-1.5 text-xs font-semibold",
+                "w-full min-w-0 rounded-full px-2 py-1.5 text-xs font-semibold",
                 mode === value ? "bg-white text-field" : "text-sidebar-foreground/70 hover:text-sidebar-foreground",
               )}
             >
@@ -254,18 +257,30 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
         ))}
       </div>
       {mode === "file" ? (
-        <div className="space-y-2">
-          <input
-            name="file"
-            type="file"
-            required
-            accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf"
-            onChange={(event) => {
-              const selected = event.target.files?.[0]
-              setFileError(selected && selected.size > MAX_UPLOAD_BYTES ? fileTooLargeMessage() : "")
-            }}
-            className="block w-full text-xs file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-field file:transition hover:file:-translate-y-0.5"
-          />
+        <div className="min-w-0 space-y-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-semibold text-field"
+            >
+              Choose file
+            </button>
+            <span className="min-w-0 truncate text-xs text-sidebar-foreground/80">{fileName || "No file chosen"}</span>
+            <input
+              ref={fileRef}
+              name="file"
+              type="file"
+              required
+              accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf"
+              onChange={(event) => {
+                const selected = event.target.files?.[0]
+                setFileName(selected?.name ?? "")
+                setFileError(selected && selected.size > MAX_UPLOAD_BYTES ? fileTooLargeMessage() : "")
+              }}
+              className="sr-only"
+            />
+          </div>
           {fileError ? (
             <p className="text-xs leading-5 text-orange-200" role="alert">
               {fileError}
@@ -305,7 +320,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
       <button
         type="submit"
         disabled={pending || Boolean(fileError)}
-        className="h-10 w-full rounded-full bg-copper text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:opacity-60 dark:text-[#1a0d0b]"
+        className="inline-flex h-10 w-full max-w-full items-center justify-center rounded-full bg-copper px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60 dark:text-[#1a0d0b] sm:hover:-translate-y-0.5"
       >
         {pending ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />Indexing…</> : "Add to library"}
       </button>
@@ -328,12 +343,12 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
         : { label: "Failed", detail: "Could not be indexed", tone: "bg-red-400/15 text-orange-100" }
 
   return (
-    <li className="rounded-2xl bg-white/6 px-3 py-3 transition hover:bg-white/12">
+    <li className="min-w-0 overflow-hidden rounded-2xl bg-white/6 px-3 py-3 transition hover:bg-white/12">
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-sidebar-foreground/70" />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <Tooltip label={source.title} className="min-w-0">
+            <Tooltip label={source.title} className="block min-w-0 flex-1">
               <p className="min-w-0 truncate text-sm font-medium">{source.title}</p>
             </Tooltip>
             <Tooltip label={status.detail}>
@@ -387,7 +402,7 @@ function UsageFooter({ org }: { org: OrgDetails }) {
   const used = org.usage.files + org.usage.websites + org.usage.texts
   const cap = org.limits.maxFiles + org.limits.maxWebsites + org.limits.maxTexts
   return (
-    <div className="border-t border-white/10 px-5 py-4 text-xs leading-5 text-sidebar-foreground/65">
+    <div className="shrink-0 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-5 break-words text-sidebar-foreground/65 sm:px-5">
       <p>
         {used}/{cap} sources · {org.usage.chunks}/{org.limits.maxChunks} chunks · {org.queries}{" "}
         {org.queries === 1 ? "question" : "questions"}
@@ -479,7 +494,6 @@ function ChatPanel({
   const [streamingStudy, setStreamingStudy] = useState<"" | "table" | "quiz">("")
   const [pending, setPending] = useState(false)
   const [streamingId, setStreamingId] = useState("")
-  const [activeSource, setActiveSource] = useState("")
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -783,20 +797,7 @@ function ChatPanel({
                       <MarkdownMessage
                         content={message.content}
                         sources={message.sources}
-                        activeCitation={
-                          activeSource.startsWith(`${message.id}:`)
-                            ? Number(activeSource.slice(message.id.length + 1))
-                            : null
-                        }
-                        onCitation={
-                          streamingId !== message.id && message.sources?.length
-                            ? (index) => {
-                                if (index < 1 || index > (message.sources?.length ?? 0)) return
-                                const key = `${message.id}:${index}`
-                                setActiveSource((current) => (current === key ? "" : key))
-                              }
-                            : undefined
-                        }
+                        interactive={streamingId !== message.id && Boolean(message.sources?.length)}
                       />
                     ) : null}
                     {streamingId === message.id ? (

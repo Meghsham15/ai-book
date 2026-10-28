@@ -9,7 +9,7 @@ export function OrgSwitcher({ libraries, current }: { libraries: LibraryOption[]
   if (libraries.length === 0) return null
 
   return (
-    <label className="min-w-0 max-w-[5rem] sm:max-w-56">
+    <label className="min-w-0 flex-1 sm:max-w-56 sm:flex-none">
       <span className="sr-only">Switch library</span>
       <Tooltip label="Switch library" className="block min-w-0">
         <select
