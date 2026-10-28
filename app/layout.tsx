@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     default: "AI Book",
     template: "%s · AI Book",
   },
-  description: "A shared library your team can ask questions of.",
+  description: "A research partner for one shared library. Ask your files, pages, and notes, and check every answer against the passage it came from.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
