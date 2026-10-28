@@ -9,11 +9,14 @@ import { readLimits, readUsage } from "@/lib/limits"
 import { listDashboardInvitations, listPendingInvites } from "@/lib/invitations"
 import { ChatTurn } from "@/lib/models/chat-turn"
 import { Chunk } from "@/lib/models/chunk"
+import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { DocumentModel } from "@/lib/models/document"
 import { Membership } from "@/lib/models/membership"
 import { Organization } from "@/lib/models/organization"
 import { requireUser } from "@/lib/session"
-import { atlasIndexSnippet } from "@/lib/vector-index"
+import { NVIDIA_EMBEDDING_DIMENSIONS } from "@/lib/constants"
+import { nvidiaEmbeddingDimensions } from "@/lib/rag/embeddings"
+import { activeVectorIndexName, atlasIndexSnippet } from "@/lib/vector-index"
 import type {
   DocumentItem,
   DocumentStatus,
@@ -125,7 +128,11 @@ export async function getOrgPage(slug: string) {
   }
   libraries.sort((left, right) => left.name.localeCompare(right.name))
 
-  const dimensions = org.embeddingDimensions || 0
+  const configuredProvider = (process.env.EMBEDDING_PROVIDER || "nvidia").toLowerCase()
+  const dimensions =
+    configuredProvider === "nvidia"
+      ? nvidiaEmbeddingDimensions()
+      : org.embeddingDimensions || NVIDIA_EMBEDDING_DIMENSIONS
   const details: OrgDetails = {
     id: org._id.toString(),
     name: org.name,
@@ -137,7 +144,7 @@ export async function getOrgPage(slug: string) {
     embeddingProvider: org.embeddingProvider || "pending",
     embeddingDimensions: dimensions,
     vectorSearch: process.env.VECTOR_SEARCH === "atlas" ? "atlas" : "memory",
-    atlasIndex: atlasIndexSnippet(dimensions, org.vectorIndexName || "chunk_vector_index"),
+    atlasIndex: atlasIndexSnippet(dimensions, activeVectorIndexName()),
     queries,
   }
 
@@ -172,7 +179,11 @@ async function loadOverview(orgIds: string[]): Promise<DashboardOverview> {
   const [questions, documents, chunks, statuses] = await Promise.all([
     dailyCounts(ChatTurn, { organizationId: { $in: ids }, role: "user", createdAt: { $gte: start } }),
     dailyCounts(DocumentModel, { organizationId: { $in: ids }, createdAt: { $gte: start } }),
-    dailyCounts(Chunk, { organizationId: { $in: ids }, createdAt: { $gte: start } }),
+    dailyCounts(NvidiaChunk, { organizationId: { $in: ids }, createdAt: { $gte: start } }).then(async (current) => {
+      const legacy = await dailyCounts(Chunk, { organizationId: { $in: ids }, createdAt: { $gte: start } })
+      for (const [day, count] of legacy) current.set(day, (current.get(day) ?? 0) + count)
+      return current
+    }),
     DocumentModel.aggregate<{ _id: string; count: number }>([
       { $match: { organizationId: { $in: ids } } },
       { $group: { _id: "$status", count: { $sum: 1 } } },

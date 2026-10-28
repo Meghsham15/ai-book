@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server"
 import { clearLibraryChat, listLibraryChat, recentLibraryChat, recordLibraryChat } from "@/lib/chat-history"
 import type { ChatStreamEvent } from "@/lib/chat-stream"
-import { passageExcerpt } from "@/lib/format"
+import { sourcePlaces, sourceQuestion } from "@/lib/format"
 import { readJson, withApi } from "@/lib/http"
-import { AppError, RateLimitError, UpstreamError, publicMessage } from "@/lib/errors"
+import { AppError, RateLimitError, UpstreamError, UserInputError, publicMessage } from "@/lib/errors"
 import { DocumentModel } from "@/lib/models/document"
+import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { requireOrgAccess } from "@/lib/org-access"
-import { assertGroqConfigured, completeGroqAnswer, streamGroqAnswer } from "@/lib/rag/llm"
+import { assertNvidiaConfigured, completeNvidiaAnswer, streamNvidiaAnswer } from "@/lib/rag/llm"
 import { buildChatMessages } from "@/lib/rag/prompt"
+import { packStudy, studyRequestLabel, type StudyTask } from "@/lib/study"
 import { consumeChatQuota } from "@/lib/rag/quota"
-import { retrieveChunks } from "@/lib/rag/retrieve"
+import { retrieveChunks, sampleDocumentChunks } from "@/lib/rag/retrieve"
 import { resolveEmbeddingProvider, type EmbeddingProvider } from "@/lib/rag/embeddings"
 import { chatSchema } from "@/lib/validators"
 import type { ChatSource } from "@/types/domain"
@@ -39,15 +41,58 @@ export const POST = withApi(async (request) => {
     return streamReply(request, org._id, user, input.query, "This library doesn't have any ready sources yet. Add a file, website, or note, then ask again.", [])
   }
 
-  const provider = (org.embeddingProvider as EmbeddingProvider | undefined) || (await resolveEmbeddingProvider())
-  const chunks = await retrieveChunks({
+  const provider = await resolveEmbeddingProvider()
+  const storedProvider = org.embeddingProvider as EmbeddingProvider | undefined
+  if (storedProvider && storedProvider !== provider && (org.usage?.chunks ?? 0) > 0) {
+    return streamReply(
+      request,
+      org._id,
+      user,
+      input.query,
+      "This library was indexed with a different embedding model. Remove its sources and add them again so questions can search the NVIDIA vectors.",
+      [],
+    )
+  }
+  const task: StudyTask | undefined = input.output
+    ? {
+        kind: input.output,
+        format: input.format ?? "summary",
+        difficulty: input.difficulty ?? "medium",
+        amount: input.amount ?? "standard",
+      }
+    : undefined
+  const savedQuery = task ? `${studyRequestLabel(task)}\n${input.query}` : input.query
+  let question = input.query
+  let scopeTitle = ""
+  if (input.documentId) {
+    const scoped = await DocumentModel.findOne({
+      _id: input.documentId,
+      organizationId: org._id,
+      status: "ready",
+    }).select("title")
+    if (!scoped) throw new UserInputError("Choose a ready source from this library.")
+    scopeTitle = scoped.title
+    question = sourceQuestion(input.query, scoped.title)
+    if (!question) throw new UserInputError("Add a question after the source name.")
+  }
+
+  let chunks = await retrieveChunks({
     organizationId: org._id.toString(),
-    query: input.query,
+    query: question,
     provider,
+    documentId: input.documentId,
+    limit: task?.kind === "table" ? 8 : task ? 10 : undefined,
   })
+  if (task?.kind === "table" && input.documentId && broadTableQuery(question)) {
+    const spread = await sampleDocumentChunks(input.documentId, 14)
+    if (spread.length > 0) chunks = spread
+  }
 
   if (chunks.length === 0) {
-    return streamReply(request, org._id, user, input.query, "I couldn't find anything in this library that matches that question.", [])
+    const empty = input.documentId
+      ? "I couldn't find anything in that source that matches that question."
+      : "I couldn't find anything in this library that matches that question."
+    return streamReply(request, org._id, user, savedQuery, empty, [])
   }
 
   const quota = consumeChatQuota(user.id)
@@ -55,22 +100,40 @@ export const POST = withApi(async (request) => {
     throw new RateLimitError("You've asked a lot in the last minute. Wait a moment and try again.")
   }
 
-  const titles = await DocumentModel.find({ _id: { $in: chunks.map((chunk) => chunk.documentId) } })
-    .select("title")
-    .lean()
-  const titleById = new Map(titles.map((document) => [String(document._id), document.title]))
+  const documentIds = [...new Set(chunks.map((chunk) => chunk.documentId))]
+  const [documents, storedChunks] = await Promise.all([
+    DocumentModel.find({ _id: { $in: documentIds } }).select("title type").lean(),
+    NvidiaChunk.find({ documentId: { $in: documentIds } }).select("documentId chunkIndex text").lean(),
+  ])
+  const titleById = new Map(documents.map((document) => [String(document._id), document.title]))
+  const typeById = new Map(documents.map((document) => [String(document._id), document.type]))
+  const chunksByDocument = new Map<string, { chunkIndex: number; text: string }[]>()
+  for (const row of storedChunks) {
+    const id = String(row.documentId)
+    const list = chunksByDocument.get(id) ?? []
+    list.push({ chunkIndex: row.chunkIndex, text: row.text })
+    chunksByDocument.set(id, list)
+  }
+  const placeByChunk = new Map<string, string>()
+  for (const [id, list] of chunksByDocument) {
+    const kind = typeById.get(id)
+    const places = sourcePlaces(list, kind === "website" || kind === "text" ? kind : "file")
+    for (const [chunkIndex, place] of places) placeByChunk.set(`${id}:${chunkIndex}`, place)
+  }
 
   const sources: ChatSource[] = chunks.map((chunk) => ({
     documentId: chunk.documentId,
     title: titleById.get(chunk.documentId) || "Untitled",
     chunkIndex: chunk.chunkIndex,
-    excerpt: passageExcerpt(chunk.text),
+    excerpt: placeByChunk.get(`${chunk.documentId}:${chunk.chunkIndex}`) || "Source",
   }))
 
-  assertGroqConfigured()
-  const history = await recentLibraryChat(org._id)
+  assertNvidiaConfigured()
+  const history = task ? [] : await recentLibraryChat(org._id)
   const messages = buildChatMessages({
-    query: input.query,
+    query: question,
+    scopeTitle: scopeTitle || undefined,
+    task,
     history,
     sources: sources.map((source, index) => ({
       index: index + 1,
@@ -82,22 +145,23 @@ export const POST = withApi(async (request) => {
   return chatStream(request, async (send) => {
     send({ type: "sources", sources })
     let answer = ""
-    for await (const delta of streamGroqAnswer(messages, request.signal)) {
+    for await (const delta of streamNvidiaAnswer(messages, request.signal)) {
       answer += delta
       send({ type: "delta", text: delta })
     }
     if (request.signal.aborted) return
     if (!answer.trim()) {
-      const recovered = (await completeGroqAnswer(messages, request.signal)).trim()
+      const recovered = (await completeNvidiaAnswer(messages, request.signal)).trim()
       if (request.signal.aborted) return
       if (!recovered) throw new UpstreamError("The model returned an empty answer. Try asking again.")
       answer = recovered
       send({ type: "delta", text: recovered })
     }
+    const stored = task && task.kind !== "report" ? packStudy(task.kind, answer) : answer
     await recordLibraryChat({
       organizationId: org._id,
-      query: input.query,
-      answer,
+      query: savedQuery,
+      answer: stored,
       sources,
       authorId: user.id,
       authorName: user.name,
@@ -105,6 +169,13 @@ export const POST = withApi(async (request) => {
     send({ type: "done" })
   })
 })
+
+function broadTableQuery(query: string) {
+  const text = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+  if (/^(all|everything|entire|whole|full|complete)\b/.test(text)) return true
+  const words = text.split(" ").filter(Boolean)
+  return words.length <= 4 && words.some((word) => ["answer", "answers", "data", "content", "summary", "topics", "points"].includes(word))
+}
 
 function streamReply(
   request: Request,

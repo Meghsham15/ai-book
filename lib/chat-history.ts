@@ -2,6 +2,7 @@ import "server-only"
 
 import mongoose from "mongoose"
 import { ChatTurn } from "@/lib/models/chat-turn"
+import { historyText } from "@/lib/study"
 import type { ChatMessage, ChatSource } from "@/types/domain"
 
 const VISIBLE_LIMIT = 60
@@ -37,7 +38,7 @@ export async function recentLibraryChat(organizationId: mongoose.Types.ObjectId)
     .lean()
   return rows.reverse().map((row) => ({
     role: row.role as "user" | "assistant",
-    content: row.content,
+    content: historyText(row.content),
   }))
 }
 

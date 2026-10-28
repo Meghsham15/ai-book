@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { emailError, normalizeEmail } from "@/lib/email-address"
+import { amounts, difficulties, reportFormats, studyKinds } from "@/lib/study"
 
 const emailField = z.string().trim().transform((value, context) => {
   const email = normalizeEmail(value)
@@ -61,6 +62,15 @@ export const updateDocumentSchema = z.object({
 export const chatSchema = z.object({
   query: z.string().trim().min(1, "Ask a question first.").max(2000),
   organizationId: z.string().trim().min(1),
+  documentId: z
+    .string()
+    .trim()
+    .regex(/^[a-f\d]{24}$/i, "Choose a source from the list.")
+    .optional(),
+  output: z.enum(studyKinds).optional(),
+  format: z.enum(reportFormats).optional(),
+  difficulty: z.enum(difficulties).optional(),
+  amount: z.enum(amounts).optional(),
   history: z
     .array(
       z.object({

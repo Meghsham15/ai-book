@@ -2,6 +2,7 @@
 
 import { signOut } from "next-auth/react"
 import { LogOut } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Tooltip } from "@/components/tooltip"
 import type { SessionUser } from "@/types/domain"
 
@@ -10,6 +11,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
 
   return (
     <div className="flex items-center gap-2">
+      <ThemeToggle compact />
       <div className="hidden text-right sm:block">
         <p className="text-sm font-medium leading-none">{user.name}</p>
         <p className="mt-1 text-xs text-muted">{user.email}</p>

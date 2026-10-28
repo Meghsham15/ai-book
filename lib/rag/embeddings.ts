@@ -1,35 +1,66 @@
 import "server-only"
 
 import { OpenAIEmbeddings } from "@langchain/openai"
+import { NVIDIA_EMBEDDING_DIMENSIONS } from "@/lib/constants"
 import { UpstreamError } from "@/lib/errors"
 
-export type EmbeddingProvider = "local" | "groq" | "xai" | "gemini"
+export type EmbeddingProvider = "local" | "groq" | "xai" | "gemini" | "nvidia"
+export type EmbeddingInputType = "passage" | "query"
 
 const LOCAL_DIM = 384
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 const GROQ_EMBEDDING_MODEL = "nomic-embed-text-v1_5"
+const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+const NVIDIA_EMBEDDING_MODEL = "nvidia/nemotron-3.5-embed-8b"
+const NVIDIA_EMBED_BATCH = 8
 let detectedProvider: Promise<EmbeddingProvider> | null = null
+
+export function nvidiaEmbeddingDimensions() {
+  const raw = Number(process.env.NVIDIA_EMBEDDING_DIMENSIONS)
+  if (Number.isInteger(raw) && raw >= 1 && raw <= NVIDIA_EMBEDDING_DIMENSIONS) return raw
+  return NVIDIA_EMBEDDING_DIMENSIONS
+}
 
 export async function resolveEmbeddingProvider(): Promise<EmbeddingProvider> {
   const forced = process.env.EMBEDDING_PROVIDER?.toLowerCase()
-  if (forced === "local" || forced === "groq" || forced === "xai" || forced === "gemini") return forced
+  if (forced === "local" || forced === "groq" || forced === "xai" || forced === "gemini" || forced === "nvidia") {
+    return forced
+  }
   if (!detectedProvider) detectedProvider = detectProvider()
   return detectedProvider
 }
 
-export async function embedTexts(texts: string[], provider: EmbeddingProvider) {
+export async function embedTexts(
+  texts: string[],
+  provider: EmbeddingProvider,
+  inputType: EmbeddingInputType = "passage",
+) {
   if (provider === "local") return texts.map(localEmbed)
+  if (provider === "nvidia") return embedWithNvidia(texts, inputType)
   if (provider === "groq") return embedWithGroq(texts)
   if (provider === "xai") return embedWithXai(texts)
   return embedWithGemini(texts)
 }
 
 export async function embedQuery(text: string, provider: EmbeddingProvider) {
-  const [vector] = await embedTexts([text], provider)
+  const [vector] = await embedTexts([text], provider, "query")
   return vector
 }
 
 async function detectProvider(): Promise<EmbeddingProvider> {
+  const nvidiaKey = process.env.NVIDIA_API_KEY?.trim()
+  if (nvidiaKey && !nvidiaKey.startsWith("replace-me")) {
+    try {
+      await embedWithNvidia(["library"], "query")
+      return "nvidia"
+    } catch (error) {
+      console.warn(
+        "NVIDIA embeddings are unavailable. Trying the next provider.",
+        error instanceof Error ? error.message : "unknown error",
+      )
+    }
+  }
+
   const geminiKey = process.env.GEMINI_API_KEY?.trim()
   if (geminiKey && !geminiKey.startsWith("replace-me")) {
     try {
@@ -57,6 +88,65 @@ async function detectProvider(): Promise<EmbeddingProvider> {
   }
 
   return "local"
+}
+
+async function embedWithNvidia(texts: string[], inputType: EmbeddingInputType) {
+  const apiKey = process.env.NVIDIA_API_KEY?.trim()
+  if (!apiKey || apiKey.startsWith("replace-me")) {
+    throw new UpstreamError("Add NVIDIA_API_KEY before using NVIDIA embeddings.")
+  }
+
+  const model = process.env.NVIDIA_EMBEDDING_MODEL || NVIDIA_EMBEDDING_MODEL
+  const base = (process.env.NVIDIA_BASE_URL || NVIDIA_BASE_URL).replace(/\/$/, "")
+  const dimensions = nvidiaEmbeddingDimensions()
+  const vectors = new Array<number[]>(texts.length)
+
+  for (let start = 0; start < texts.length; start += NVIDIA_EMBED_BATCH) {
+    const batch = texts.slice(start, start + NVIDIA_EMBED_BATCH)
+    const response = await fetch(`${base}/embeddings`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input: batch,
+        input_type: inputType,
+        encoding_format: "float",
+        truncate: "END",
+        embedding_type: "float",
+        dimensions,
+      }),
+    })
+
+    if (!response.ok) {
+      console.error("NVIDIA embedding request failed", response.status)
+      throw new UpstreamError("NVIDIA embeddings could not be created. Check NVIDIA_API_KEY and NVIDIA_EMBEDDING_MODEL.")
+    }
+
+    const payload = (await response.json()) as {
+      data?: { index?: number; embedding?: number[] }[]
+    }
+    const rows = payload.data ?? []
+    if (rows.length !== batch.length) {
+      throw new UpstreamError("NVIDIA returned an unexpected embedding batch.")
+    }
+
+    rows.forEach((row, fallbackIndex) => {
+      const index = typeof row.index === "number" ? row.index : fallbackIndex
+      if (!row.embedding?.length) {
+        throw new UpstreamError("NVIDIA returned an empty embedding.")
+      }
+      vectors[start + index] = normalize(row.embedding)
+    })
+  }
+
+  if (vectors.some((vector) => !vector?.length)) {
+    throw new UpstreamError("NVIDIA returned an empty embedding.")
+  }
+  return vectors
 }
 
 async function embedWithGroq(texts: string[]) {

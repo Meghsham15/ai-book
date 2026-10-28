@@ -15,7 +15,7 @@ export function OrgSwitcher({ libraries, current }: { libraries: LibraryOption[]
         <select
           value={current}
           onChange={(event) => router.push(`/org/${event.target.value}`)}
-          className="max-w-44 truncate rounded-full border border-line bg-card px-3 py-2 text-sm outline-none transition focus:border-accent sm:max-w-64"
+          className="max-w-44 truncate border border-line bg-card px-3 py-2 text-sm outline-none transition focus:border-accent sm:max-w-64"
         >
         {libraries.map((library) => (
           <option key={library.id} value={library.slug}>

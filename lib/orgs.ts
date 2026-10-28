@@ -2,10 +2,12 @@ import "server-only"
 
 import mongoose from "mongoose"
 import { DEFAULT_LIMITS } from "@/lib/constants"
+import { activeVectorIndexName } from "@/lib/vector-index"
 import { AuthzError, UserInputError } from "@/lib/errors"
 import { sameId } from "@/lib/limits"
 import { ChatTurn } from "@/lib/models/chat-turn"
 import { Chunk } from "@/lib/models/chunk"
+import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { DocumentModel } from "@/lib/models/document"
 import { Invitation } from "@/lib/models/invitation"
 import { Membership } from "@/lib/models/membership"
@@ -31,7 +33,7 @@ export async function createOrganization(userId: string, name: string) {
     ownerId: userId,
     limits: { ...DEFAULT_LIMITS },
     usage: { files: 0, websites: 0, texts: 0, chunks: 0 },
-    vectorIndexName: process.env.ATLAS_VECTOR_INDEX || "chunk_vector_index",
+    vectorIndexName: activeVectorIndexName(),
   })
 
   try {
@@ -73,6 +75,7 @@ export async function deleteOrganization(orgId: mongoose.Types.ObjectId, actorId
 async function removeLibraryRecords(orgId: mongoose.Types.ObjectId, session?: mongoose.ClientSession) {
   const filter = { organizationId: orgId }
   const options = session ? { session } : undefined
+  await NvidiaChunk.deleteMany(filter, options)
   await Chunk.deleteMany(filter, options)
   await DocumentModel.deleteMany(filter, options)
   await ChatTurn.deleteMany(filter, options)

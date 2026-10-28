@@ -20,7 +20,7 @@ export function UsageChart({ days }: { days: UsageDay[] }) {
   const hovered = hover == null ? null : days[hover]
 
   return (
-    <article className="rounded-2xl border border-line bg-card px-5 py-4">
+    <article className="border border-line bg-card px-5 py-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-sm font-medium">{active.label} over 14 days</h2>
@@ -41,8 +41,8 @@ export function UsageChart({ days }: { days: UsageDay[] }) {
                 setMetric(item.id)
                 setHover(null)
               }}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
-                selected ? "border-accent bg-accent/10 text-accent" : "border-line text-muted hover:text-foreground"
+              className={`inline-flex items-center gap-2 border-b-2 px-1 py-1.5 text-sm ${
+                selected ? "border-accent text-foreground" : "border-transparent text-muted hover:text-foreground"
               }`}
             >
               <Sparkline values={days.map((day) => day[item.id])} active={selected} />

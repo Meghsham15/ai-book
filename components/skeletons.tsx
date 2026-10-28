@@ -4,7 +4,7 @@ export function PageSkeleton({ label }: { label: string }) {
       <div className="h-14 border-b border-line bg-card" />
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-6 py-10">
         <div className="h-10 w-56 animate-pulse rounded-full bg-line" />
-        <div className="h-28 animate-pulse rounded-3xl bg-card" />
+        <div className="h-28 animate-pulse bg-card" />
         <p className="text-sm text-muted">{label}</p>
       </div>
     </div>

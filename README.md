@@ -7,7 +7,7 @@ Sign in with Google. Creating a library makes you its owner.
 ## Use the app
 
 1. Create a library from the dashboard.
-2. Add a source: a PDF or text file (up to 50 MB), a public web page, or a note you paste in.
+2. Add a source: a PDF or text file (up to 4.5 MB), a public web page, or a note you paste in.
 3. Wait until the source says **Ready**. Indexing reads the text, splits it, and stores it for search.
 4. Ask a question in the library chat. The answer streams in, with citations such as `[1]`.
 5. Hover a citation to read the document name and the quoted passage. Click it to keep that passage open.
@@ -35,13 +35,13 @@ These are fixed in the app. They are not edited in settings.
 
 - 50 files, 20 websites, and 100 notes per library
 - 10,000 search chunks per library
-- 50 MB per uploaded file
+- 4.5 MB per uploaded file
 - About 120,000 characters of text indexed from one source
 - 20 questions per minute
 
 ## Run it locally
 
-You need Node.js, a MongoDB database, a Google OAuth client, a Groq API key for answers, and a Gemini API key for search embeddings.
+You need Node.js, a MongoDB database, a Google OAuth client, and an NVIDIA API key. Answers use `nvidia/nemotron-3.5-super-vl-120b-a12b`. Search embeddings use `nvidia/nemotron-3.5-embed-8b`.
 
 ```bash
 npm install
@@ -63,12 +63,48 @@ http://localhost:3000/api/auth/callback/google
 | --- | --- |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `MONGODB_URI` | Libraries, sources, members, and chat |
-| `GROQ_API_KEY`, `GROQ_CHAT_MODEL` | The model that writes answers |
-| `GEMINI_API_KEY`, `EMBEDDING_PROVIDER=gemini` | Turning source text into search vectors |
+| `NVIDIA_API_KEY` | Answers and embeddings |
+| `NVIDIA_CHAT_MODEL` | `nvidia/nemotron-3.5-super-vl-120b-a12b` |
+| `NVIDIA_EMBEDDING_MODEL`, `EMBEDDING_PROVIDER=nvidia` | `nvidia/nemotron-3.5-embed-8b` vectors, stored in the `nvidiachunks` collection |
 | `INVITE_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASS` | Invitation email. `SMTP_PASS` is a Google app password, not the mailbox password |
-| `VECTOR_SEARCH` | `memory` works on any MongoDB. `atlas` uses a MongoDB Atlas vector index named `chunk_vector_index` |
+| `VECTOR_SEARCH` | `memory` works on any MongoDB. `atlas` uses a MongoDB Atlas vector index named `nvidia_chunk_vector_index` on the `nvidiachunks` collection |
 
-With Gemini embeddings, an Atlas vector index uses **768** dimensions, cosine similarity, the `embedding` field, and a filter on `organizationId`. `memory` does not need that index.
+NVIDIA embeddings are **4096** dimensions. The Atlas index uses cosine similarity, the `embedding` field, and filters on `organizationId` and `documentId`. `memory` does not need that index. The `documentId` filter lets a question aimed at one source stay inside Atlas. Without it, that question still searches only the chosen source by comparing its stored vectors.
+
+Sources indexed with an older embedding model have to be removed and added again. Their vectors are a different size and stay in the old `chunks` collection.
+
+### Atlas vector index
+
+Create this index after the first NVIDIA source exists, so the `nvidiachunks` collection is already in the same database as `organizations`.
+
+1. In Atlas, open the cluster, then **Search & Vector Search** (or the collection's **Search Indexes** tab).
+2. Create a **JSON Editor** index on the database the app uses and the collection `nvidiachunks`.
+3. Name it `nvidia_chunk_vector_index`.
+4. Paste:
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 4096,
+      "similarity": "cosine"
+    },
+    {
+      "type": "filter",
+      "path": "organizationId"
+    },
+    {
+      "type": "filter",
+      "path": "documentId"
+    }
+  ]
+}
+```
+
+5. Wait until the index status is **Active**. Until then, search still works by comparing stored vectors in memory.
+6. Keep `VECTOR_SEARCH=atlas` and `ATLAS_VECTOR_INDEX=nvidia_chunk_vector_index`. Do not point this index at the old `chunks` collection.
 
 ```bash
 npm run build

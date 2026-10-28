@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { BrandMark } from "@/components/brand"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 function GoogleMark() {
   return (
@@ -25,34 +26,35 @@ export function LoginScreen({
   const [pending, setPending] = useState(false)
 
   return (
-    <main className="grid min-h-dvh lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="relative flex flex-col justify-between bg-sidebar px-6 py-8 text-sidebar-foreground sm:px-12 sm:py-12">
-        <div className="flex items-center gap-3">
-          <BrandMark />
-          <span className="font-display text-3xl tracking-tight">AI Book</span>
+    <main className="grid min-h-dvh lg:grid-cols-[1.25fr_0.75fr]">
+      <section className="flex flex-col justify-between px-6 py-8 sm:px-12 sm:py-12">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <BrandMark />
+            <span className="font-display text-2xl leading-none">AI Book</span>
+          </div>
+          <ThemeToggle />
         </div>
-        <div className="max-w-xl py-16">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Shared knowledge</p>
-          <h1 className="mt-4 font-display text-5xl leading-[1.08] tracking-tight">
-            Ask the things your team already knows.
+        <div className="max-w-xl py-12">
+          <h1 className="rise font-display text-5xl leading-[1.05] sm:text-6xl">
+            Ask the library your team already wrote.
           </h1>
-          <p className="mt-5 max-w-md text-base leading-7 text-sidebar-foreground/75">
-            Collect files, sites, and notes in one library. Answers stay attached to the passage they came from.
+          <p className="mt-6 max-w-[42ch] text-base leading-7 text-muted">
+            Files, pages, and notes stay together. Every answer points back to the passage it came from.
           </p>
-          <ul className="mt-8 space-y-2 text-sm text-sidebar-foreground/70">
-            <li>Libraries with admin, manager, and member roles</li>
-            <li>Invitations by email, even before the first sign-in</li>
-            <li>A shared chat the whole library can read</li>
-          </ul>
+          <article className="rise-late mt-10 max-w-md border border-line bg-card px-5 py-5 shadow-[0_24px_50px_-32px_rgba(26,33,64,0.65)]">
+            <p className="font-display text-2xl leading-snug">The handover window is 14 days after the contract ends.</p>
+            <p className="mt-4 inline-flex items-center gap-2 border-l-4 border-copper pl-3 text-sm text-muted">Handbook, page 4</p>
+          </article>
         </div>
-        <p className="text-sm text-sidebar-foreground/50">Sources stay inside the library that owns them.</p>
+        <p className="max-w-md text-sm leading-6 text-muted">Sources stay inside the library that owns them.</p>
       </section>
-      <section className="flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-sm rounded-2xl border border-line bg-card p-6 shadow-[0_12px_40px_rgba(28,25,23,0.06)] sm:p-8">
-          <h2 className="font-display text-3xl tracking-tight">Sign in</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Use the Google account that should see your libraries.</p>
+      <section className="flex items-center bg-sidebar px-6 py-16 text-sidebar-foreground sm:px-12">
+        <div className="w-full max-w-sm">
+          <h2 className="font-display text-4xl leading-none">Sign in</h2>
+          <p className="mt-3 text-sm leading-6 text-sidebar-foreground/75">Use the Google account that should see your libraries.</p>
           {!googleConfigured ? (
-            <p className="mt-6 rounded-2xl border border-copper/30 bg-copper/10 px-4 py-3 text-sm leading-6 text-foreground">
+            <p className="mt-6 border border-copper px-4 py-3 text-sm leading-6">
               Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local before signing in.
             </p>
           ) : null}
@@ -63,7 +65,7 @@ export function LoginScreen({
               setPending(true)
               void signIn("google", { callbackUrl })
             }}
-            className="mt-8 flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-4 text-sm font-semibold text-stone-800 shadow-sm ring-1 ring-stone-300 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-8 flex h-12 w-full items-center justify-center gap-3 bg-card px-4 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:bg-background disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <GoogleMark />
             {pending ? "Redirecting to Google…" : "Continue with Google"}

@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Library, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import { SetupNotice } from "@/components/setup-notice"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
@@ -51,9 +51,8 @@ export function DashboardView({
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-copper">Libraries</p>
-            <h1 className="mt-2 font-display text-4xl tracking-tight">Hello, {user.name.split(" ")[0] || "there"}</h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
+            <h1 className="rise font-display text-5xl leading-none">Hello, {user.name.split(" ")[0] || "there"}</h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
               Each library keeps its own sources, members, and chat. Creating one makes you the admin.
             </p>
           </div>
@@ -62,45 +61,37 @@ export function DashboardView({
           </p>
         </div>
         {libraries.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line bg-card/60 px-6 py-16 text-center">
-            <p className="font-display text-3xl">No libraries yet</p>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">
+          <div className="border-y border-line py-16">
+            <p className="font-display text-4xl">No libraries yet</p>
+            <p className="mt-3 max-w-md text-sm leading-6 text-muted">
               Create one below, then invite teammates by email. They can join even if they have never signed in.
             </p>
           </div>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="border-y border-line">
             {libraries.map((library) => {
               const sources = library.usage.files + library.usage.websites + library.usage.texts
               return (
-                <li key={library.id}>
-                  <Link
-                    href={`/org/${library.slug}`}
-                    className="flex h-full flex-col rounded-2xl border border-line bg-card p-5 shadow-[0_1px_2px_rgba(28,25,23,0.04)] transition hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_10px_30px_rgba(14,110,104,0.08)]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent/10 text-accent">
-                        <Library className="h-4 w-4" />
-                      </span>
-                      <Tooltip
-                        label={
-                          library.role === "admin"
-                            ? "You can manage this library"
-                            : library.role === "manager"
-                              ? "You can add and remove sources"
-                              : "You can ask questions"
-                        }
-                      >
-                        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-                          {roleLabel(library.role)}
-                        </span>
-                      </Tooltip>
+                <li key={library.id} className="border-b border-line last:border-b-0">
+                  <Link href={`/org/${library.slug}`} className="page-link grid gap-2 py-5 pl-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <div>
+                      <h2 className="font-display text-3xl leading-none">{library.name}</h2>
+                      <p className="mt-2 text-sm text-muted">
+                        {sources} {sources === 1 ? "source" : "sources"}, {library.queries}{" "}
+                        {library.queries === 1 ? "question" : "questions"}
+                      </p>
                     </div>
-                    <h2 className="mt-4 font-display text-2xl leading-none tracking-tight">{library.name}</h2>
-                    <p className="mt-4 text-sm text-muted">
-                      {sources} {sources === 1 ? "source" : "sources"} · {library.usage.chunks} chunks · {library.queries}{" "}
-                      {library.queries === 1 ? "question" : "questions"}
-                    </p>
+                    <Tooltip
+                      label={
+                        library.role === "admin"
+                          ? "You can manage this library"
+                          : library.role === "manager"
+                            ? "You can add and remove sources"
+                            : "You can ask questions"
+                      }
+                    >
+                      <span className="text-sm text-accent">{roleLabel(library.role)}</span>
+                    </Tooltip>
                   </Link>
                 </li>
               )
@@ -108,7 +99,7 @@ export function DashboardView({
           </ul>
         )}
 
-        <form onSubmit={onSubmit} className="rounded-2xl border border-line bg-card p-4 shadow-[0_1px_2px_rgba(28,25,23,0.04)] sm:p-5">
+        <form onSubmit={onSubmit}>
           <label htmlFor="library-name" className="text-sm font-medium">
             New library
           </label>
@@ -121,12 +112,12 @@ export function DashboardView({
               minLength={2}
               maxLength={60}
               required
-              className="h-12 flex-1 rounded-full border border-line bg-white px-4 text-sm outline-none transition focus:border-accent"
+              className="h-12 flex-1 border border-line bg-card px-4 text-sm outline-none transition focus:border-accent"
             />
             <button
               type="submit"
               disabled={pending || Boolean(configError)}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:bg-teal-800 disabled:opacity-60"
+              className="inline-flex h-12 items-center justify-center gap-2 bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
             >
               <Plus className="h-4 w-4" />
               {pending ? "Creating…" : "Create library"}
@@ -166,7 +157,7 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
   }
 
   return (
-    <section className="rounded-2xl border border-copper/30 bg-card p-5 shadow-[0_1px_2px_rgba(28,25,23,0.04)]">
+    <section className="border-t border-line pt-6">
       <h2 className="font-display text-2xl">Invitations</h2>
       <p className="mt-1 text-sm leading-6 text-muted">These libraries invited the Google account you used to sign in.</p>
       <ul className="mt-4 divide-y divide-line">
@@ -186,7 +177,7 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
                 type="button"
                 disabled={pendingToken === invite.token}
                 onClick={() => void respond(invite.token, "accept")}
-                className="h-10 rounded-full bg-accent px-4 text-sm font-semibold text-accent-foreground disabled:opacity-60"
+                className="h-10 bg-accent px-4 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
               >
                 {invite.kind === "transfer" ? "Accept ownership" : "Accept"}
               </button>
@@ -194,7 +185,7 @@ function InvitationList({ invitations }: { invitations: DashboardInvitation[] })
                 type="button"
                 disabled={pendingToken === invite.token}
                 onClick={() => void respond(invite.token, "decline")}
-                className="h-10 rounded-full px-4 text-sm text-danger disabled:opacity-60"
+                className="h-10 px-4 text-sm text-danger disabled:opacity-60"
               >
                 Decline
               </button>

@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
 import { deleteJson, patchJson, postJson } from "@/lib/client-api"
@@ -41,11 +42,17 @@ export function SettingsView({
           </Link>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Settings</p>
-          <h1 className="mt-2 font-display text-5xl tracking-tight">{org.name}</h1>
+          <h1 className="font-display text-5xl leading-none">{org.name}</h1>
           <p className="mt-2 text-sm text-muted">You are {roleLabel(org.role).toLowerCase()} here{org.isOwner ? " and the owner" : ""}.</p>
         </div>
 
+        <section className="border border-line bg-card p-5">
+          <h2 className="font-display text-3xl">Appearance</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">Light or dark. This stays on this browser.</p>
+          <div className="mt-4">
+            <ThemeToggle />
+          </div>
+        </section>
         {admin ? <RenameForm org={org} /> : null}
         <MembersCard org={org} members={members} invitations={invitations} currentUserId={user.id} admin={admin} />
         {org.isOwner ? <DeleteLibrary org={org} /> : null}
@@ -76,7 +83,7 @@ function RenameForm({ org }: { org: OrgDetails }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-3xl border border-line bg-card p-5">
+    <form onSubmit={onSubmit} className="border border-line bg-card p-5">
       <h2 className="font-display text-3xl">Library name</h2>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <input
@@ -85,9 +92,9 @@ function RenameForm({ org }: { org: OrgDetails }) {
           minLength={2}
           maxLength={60}
           required
-          className="h-11 flex-1 rounded-full border border-line bg-white px-4 text-sm outline-none focus:border-accent"
+          className="h-11 flex-1 rounded-none border border-line bg-card px-4 text-sm outline-none focus:border-accent"
         />
-        <button type="submit" disabled={pending} className="h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-60">
+        <button type="submit" disabled={pending} className="h-11 rounded-none bg-ink px-5 text-sm font-semibold text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground disabled:translate-y-0 disabled:opacity-60">
           {pending ? "Saving…" : "Save name"}
         </button>
       </div>
@@ -148,7 +155,7 @@ function MembersCard({
   }
 
   return (
-    <section className="rounded-3xl border border-line bg-card p-5">
+    <section className="border border-line bg-card p-5">
       <h2 className="font-display text-3xl">People</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         Admins invite people by email. Someone who already uses AI Book also sees the invitation on their dashboard. A new person opens the link and signs in with that same Google account.
@@ -188,7 +195,7 @@ function MembersCard({
                       setPending(false)
                     }
                   }}
-                  className="h-10 rounded-full border border-line bg-white px-3 text-sm"
+                  className="h-10 rounded-none border border-line bg-card px-3 text-sm"
                 >
                   {roles.map((item) => (
                     <option key={item} value={item}>
@@ -218,7 +225,7 @@ function MembersCard({
                         setPending(false)
                       }
                     }}
-                    className="h-10 rounded-full px-3 text-sm text-danger"
+                    className="h-10 rounded-none px-3 text-sm text-danger"
                   >
                     Remove
                   </button>
@@ -243,16 +250,16 @@ function MembersCard({
             onChange={(event) => setEmail(event.target.value)}
             placeholder="teammate@company.com"
             aria-invalid={email.length > 0 && Boolean(emailError(email))}
-            className="h-11 rounded-full border border-line bg-white px-4 text-sm outline-none focus:border-accent"
+            className="h-11 rounded-none border border-line bg-card px-4 text-sm outline-none focus:border-accent"
           />
-          <select value={role} onChange={(event) => setRole(event.target.value as Role)} className="h-11 rounded-full border border-line bg-white px-3 text-sm">
+          <select value={role} onChange={(event) => setRole(event.target.value as Role)} className="h-11 rounded-none border border-line bg-card px-3 text-sm">
             {roles.map((item) => (
               <option key={item} value={item}>
                 {roleLabel(item)}
               </option>
             ))}
           </select>
-          <button type="submit" disabled={pending} className="h-11 rounded-full bg-accent px-5 text-sm font-semibold text-accent-foreground disabled:opacity-60">
+          <button type="submit" disabled={pending} className="h-11 rounded-none bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60">
             {pending ? "Sending…" : "Send invite"}
           </button>
         </form>
@@ -283,7 +290,7 @@ function MembersCard({
                     setPending(false)
                   }
                 }}
-                className="h-10 rounded-full px-3 text-sm text-danger"
+                className="h-10 rounded-none px-3 text-sm text-danger"
               >
                 {invite.kind === "transfer" ? "Cancel request" : "Cancel invite"}
               </button>
@@ -334,9 +341,9 @@ function MembersCard({
               onChange={(event) => setOwnerEmail(event.target.value)}
               placeholder="name@email.com"
               required
-              className="h-11 flex-1 rounded-full border border-line bg-white px-4 text-sm outline-none focus:border-accent"
+              className="h-11 flex-1 rounded-none border border-line bg-card px-4 text-sm outline-none focus:border-accent"
             />
-            <button type="submit" disabled={pending || !ownerEmail.trim()} className="h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="submit" disabled={pending || !ownerEmail.trim()} className="h-11 rounded-none bg-ink px-5 text-sm font-semibold text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground disabled:translate-y-0 disabled:opacity-60">
               {pending ? "Sending…" : "Send request"}
             </button>
           </div>
@@ -372,7 +379,7 @@ function DeleteLibrary({ org }: { org: OrgDetails }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-3xl border border-danger/30 bg-card p-5">
+    <form onSubmit={onSubmit} className="border border-danger/30 bg-card p-5">
       <h2 className="font-display text-3xl">Delete library</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         This removes {org.name} for everyone connected to it. Files, websites, notes, search chunks, chat, members, and pending invitations are deleted with it.
@@ -383,13 +390,13 @@ function DeleteLibrary({ org }: { org: OrgDetails }) {
           value={name}
           onChange={(event) => setName(event.target.value)}
           autoComplete="off"
-          className="h-11 w-full rounded-2xl border border-line bg-white px-3 outline-none focus:border-danger"
+          className="h-11 w-full border border-line bg-card px-3 outline-none focus:border-danger"
         />
       </label>
       <button
         type="submit"
         disabled={!confirmed || pending}
-        className="mt-4 h-11 rounded-full bg-danger px-5 text-sm font-semibold text-white disabled:opacity-60"
+        className="mt-4 h-11 rounded-none bg-danger-fill px-5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
       >
         {pending ? "Deleting…" : "Delete library"}
       </button>

@@ -1,18 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f1eb;
-  --foreground: #1c1917;
-  --card: #fffcf8;
-  --muted: #6f675f;
-  --line: #e6dfd4;
-  --accent: #0e6e68;
-  --accent-foreground: #f3fffd;
-  --ink: #1c1917;
-  --sidebar: #171412;
-  --sidebar-foreground: #f6f1ea;
-  --danger: #9f2d2d;
-  --copper: #a85a2c;
+  color-scheme: light;
+  --background: #e7edf4;
+  --foreground: #172033;
+  --card: #f8fafc;
+  --muted: #5c6d82;
+  --line: #d0d9e6;
+  --accent: #1e4f8a;
+  --accent-foreground: #f4f8fc;
+  --ink: #172033;
+  --on-ink: #f8fafc;
+  --field: #172033;
+  --sidebar: #152033;
+  --sidebar-foreground: #e7eef8;
+  --danger: #a33b32;
+  --danger-fill: #9f2d2d;
+  --copper: #c4493a;
+  --ready: #1d6b4f;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0c121b;
+  --foreground: #e7eef6;
+  --card: #151d2b;
+  --muted: #93a3b8;
+  --line: #2a384c;
+  --accent: #8eb7f0;
+  --accent-foreground: #0c121b;
+  --ink: #e7eef6;
+  --on-ink: #0c121b;
+  --sidebar: #070b11;
+  --sidebar-foreground: #e7eef6;
+  --danger: #f0a8a2;
+  --danger-fill: #9f2d2d;
+  --copper: #e07a6a;
+  --ready: #7dcea0;
 }
 
 @theme inline {
@@ -24,21 +48,43 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-field: var(--field);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-danger: var(--danger);
+  --color-danger-fill: var(--danger-fill);
   --color-copper: var(--copper);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-fraunces);
+  --color-ready: var(--ready);
+  --font-sans: var(--font-sans-face), "Schibsted Grotesk", sans-serif;
+  --font-display: var(--font-display-face), Literata, Georgia, serif;
 }
 
 body {
-  background:
-    linear-gradient(180deg, rgba(14, 110, 104, 0.05), transparent 280px),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  .rise {
+    animation: rise 0.7s ease both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 :focus-visible {
@@ -46,8 +92,37 @@ body {
   outline-offset: 2px;
 }
 
+.composer-shell {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.composer-shell:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.composer-shell :focus-visible {
+  outline: none;
+}
+
+.page-link {
+  border-left: 3px solid transparent;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.page-link:hover {
+  border-left-color: var(--copper);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.reading {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
 ::selection {
-  background: #d7ece8;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 button,
@@ -55,4 +130,21 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+.katex {
+  font-size: 1.05em;
+  line-height: 1.4;
+}
+
+.katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25rem;
+}
+
+.katex svg {
+  display: inline;
+  max-width: none;
 }

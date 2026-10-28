@@ -1,15 +1,15 @@
 import "server-only"
 
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose"
-import { DEFAULT_LIMITS } from "@/lib/constants"
+import { DEFAULT_LIMITS, NVIDIA_VECTOR_INDEX } from "@/lib/constants"
 
 const organizationSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    vectorIndexName: { type: String, default: "chunk_vector_index" },
-    embeddingProvider: { type: String, enum: ["local", "groq", "xai", "gemini"], required: false },
+    vectorIndexName: { type: String, default: NVIDIA_VECTOR_INDEX },
+    embeddingProvider: { type: String, enum: ["local", "groq", "xai", "gemini", "nvidia"], required: false },
     embeddingDimensions: { type: Number, default: 0 },
     limits: {
       maxFiles: { type: Number, default: DEFAULT_LIMITS.maxFiles },

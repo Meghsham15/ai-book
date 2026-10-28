@@ -9,7 +9,7 @@ import { jsonSourceSchema } from "@/lib/validators"
 import { DocumentModel } from "@/lib/models/document"
 import type { DocumentItem, DocumentStatus, DocumentType } from "@/types/domain"
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 export const GET = withApi(async (request) => {
   const organizationId = new URL(request.url).searchParams.get("organizationId")

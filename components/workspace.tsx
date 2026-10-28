@@ -3,14 +3,17 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { FileText, Globe, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
+import { FileText, Globe, Loader2, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
 import { MarkdownMessage } from "@/components/markdown-message"
+import { StudioBar, studioPlaceholder } from "@/components/studio-bar"
+import { StudyOutput } from "@/components/study-output"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
 import { deleteJson, getJson, postForm, postJson, readChatStream } from "@/lib/client-api"
-import { fileTooLargeMessage, MAX_UPLOAD_BYTES } from "@/lib/constants"
-import { formatDate } from "@/lib/format"
+import { fileTooLargeMessage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/constants"
+import { formatDate, sourceQuestion } from "@/lib/format"
+import { packStudy, parseStudy, studyRequestLabel, type Amount, type Difficulty, type ReportFormat, type StudyKind } from "@/lib/study"
 import { cn } from "@/lib/utils"
 import type { ChatMessage, ChatSource, DocumentItem, DocumentType, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
 
@@ -95,6 +98,7 @@ export function Workspace({
             libraryName={org.name}
             currentUserId={user.id}
             currentUserName={user.name}
+            sources={sourceItems}
             reloadToken={reloadToken}
             refreshing={refreshing}
             canWrite={canWrite}
@@ -107,6 +111,13 @@ export function Workspace({
       </div>
     </div>
   )
+}
+
+function activeMention(value: string, caret: number) {
+  const before = value.slice(0, caret)
+  const match = /(?:^|\s)@([^\s@]*)$/.exec(before)
+  if (!match) return null
+  return { start: before.length - match[1].length - 1, query: match[1] }
 }
 
 function PanelButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
@@ -138,7 +149,7 @@ function SourceColumn({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-white/10 px-5 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/50">Sources</p>
+        <p className="text-sm text-sidebar-foreground/60">Sources</p>
         <Tooltip label={org.name} className="max-w-full">
           <h1 className="mt-1.5 truncate font-display text-3xl leading-none tracking-tight">{org.name}</h1>
         </Tooltip>
@@ -223,7 +234,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
           <Tooltip
             key={value}
             className="w-full"
-            label={value === "file" ? "PDF or text file, up to 50 MB" : value === "website" ? "A public web page" : "Text you paste in"}
+            label={value === "file" ? `PDF or text file, up to ${MAX_UPLOAD_MB} MB` : value === "website" ? "A public web page" : "Text you paste in"}
           >
             <button
               type="button"
@@ -234,7 +245,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
               }}
               className={cn(
                 "w-full rounded-full px-2 py-1.5 text-xs font-semibold",
-                mode === value ? "bg-white text-ink" : "text-sidebar-foreground/70",
+                mode === value ? "bg-white text-field" : "text-sidebar-foreground/70 hover:text-sidebar-foreground",
               )}
             >
               {label}
@@ -253,7 +264,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
               const selected = event.target.files?.[0]
               setFileError(selected && selected.size > MAX_UPLOAD_BYTES ? fileTooLargeMessage() : "")
             }}
-            className="block w-full text-xs file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-ink"
+            className="block w-full text-xs file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-field file:transition hover:file:-translate-y-0.5"
           />
           {fileError ? (
             <p className="text-xs leading-5 text-orange-200" role="alert">
@@ -269,7 +280,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
           required
           type="url"
           placeholder="https://example.com/guide"
-          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-ink outline-none"
+          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
         />
       ) : null}
       {mode !== "file" ? (
@@ -278,7 +289,7 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
           onChange={(event) => setTitle(event.target.value)}
           required={mode === "text"}
           placeholder={mode === "text" ? "Note title" : "Title (optional)"}
-          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-ink outline-none"
+          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
         />
       ) : null}
       {mode === "text" ? (
@@ -288,13 +299,13 @@ function SourceComposer({ organizationId }: { organizationId: string }) {
           required
           rows={4}
           placeholder="Paste a FAQ, policy, or note."
-          className="w-full resize-none rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-ink outline-none"
+          className="w-full resize-none rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
         />
       ) : null}
       <button
         type="submit"
         disabled={pending || Boolean(fileError)}
-        className="h-10 w-full rounded-full bg-copper text-sm font-semibold text-white transition hover:bg-orange-700 disabled:opacity-60"
+        className="h-10 w-full rounded-full bg-copper text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:opacity-60 dark:text-[#1a0d0b]"
       >
         {pending ? "Indexing…" : "Add to library"}
       </button>
@@ -317,7 +328,7 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
         : { label: "Failed", detail: "Could not be indexed", tone: "bg-red-400/15 text-orange-100" }
 
   return (
-    <li className="rounded-2xl bg-white/6 px-3 py-3">
+    <li className="rounded-2xl bg-white/6 px-3 py-3 transition hover:bg-white/12">
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-sidebar-foreground/70" />
         <div className="min-w-0 flex-1">
@@ -332,7 +343,7 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
             </Tooltip>
           </div>
           <p className="mt-1 text-xs text-sidebar-foreground/55">
-            {kind} · {status.detail} · {formatDate(source.createdAt)}
+            {kind}, {status.detail}, {formatDate(source.createdAt)}
           </p>
           {source.status === "failed" && source.errorMessage ? (
             <p className="mt-1 text-xs leading-5 text-orange-200">{source.errorMessage}</p>
@@ -411,8 +422,7 @@ function EmptyLibrary({
 
   return (
     <div className="rounded-3xl border border-dashed border-line bg-card px-6 py-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Ask</p>
-      <h2 className="mt-3 font-display text-4xl tracking-tight">{title}</h2>
+      <h2 className="font-display text-4xl tracking-tight">{title}</h2>
       <p className="mt-3 max-w-md text-sm leading-6 text-muted">{detail}</p>
       {waiting ? (
         <button
@@ -434,6 +444,7 @@ function ChatPanel({
   libraryName,
   currentUserId,
   currentUserName,
+  sources,
   reloadToken,
   refreshing,
   canWrite,
@@ -446,6 +457,7 @@ function ChatPanel({
   libraryName: string
   currentUserId: string
   currentUserName: string
+  sources: DocumentItem[]
   reloadToken: number
   refreshing: boolean
   canWrite: boolean
@@ -456,6 +468,15 @@ function ChatPanel({
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [scope, setScope] = useState<{ id: string; token: string } | null>(null)
+  const [searchLabel, setSearchLabel] = useState("")
+  const [output, setOutput] = useState<StudyKind | null>(null)
+  const [reportFormat, setReportFormat] = useState<ReportFormat>("summary")
+  const [difficulty, setDifficulty] = useState<Difficulty>("medium")
+  const [amount, setAmount] = useState<Amount>("standard")
+  const [streamingStudy, setStreamingStudy] = useState<"" | "table" | "quiz">("")
   const [pending, setPending] = useState(false)
   const [streamingId, setStreamingId] = useState("")
   const [activeSource, setActiveSource] = useState("")
@@ -464,6 +485,13 @@ function ChatPanel({
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState("")
   const endRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const readySources = sources.filter((source) => source.status === "ready")
+  const mentionMatches = mention
+    ? readySources
+        .filter((source) => source.title.toLowerCase().includes(mention.query.toLowerCase()))
+        .slice(0, 8)
+    : []
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: streamingId ? "auto" : "smooth" })
@@ -504,26 +532,78 @@ function ChatPanel({
     }
   }, [organizationId, reloadToken])
 
+  function syncMention(value: string, caret: number) {
+    const next = activeMention(value, caret)
+    setMention(next)
+    setMentionIndex(0)
+  }
+
+  function chooseSource(source: DocumentItem) {
+    const caret = inputRef.current?.selectionStart ?? draft.length
+    const current = activeMention(draft, caret)
+    if (!current) return
+    const token = `@${source.title}`
+    const next = `${draft.slice(0, current.start)}${token} ${draft.slice(caret)}`
+    const place = current.start + token.length + 1
+    setDraft(next)
+    setScope({ id: source.id, token })
+    setMention(null)
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(place, place)
+    })
+  }
+
   async function ask(text: string) {
-    const query = text.trim()
-    if (!query || pending) return
+    const shown = text.trim()
+    const scoped = scope && sourceQuestion(shown, scope.token.slice(1)) !== shown ? scope : null
+    const query = scoped ? sourceQuestion(shown, scoped.token.slice(1)) : shown
+    if (!query || pending) {
+      if (shown && !query) setError(output ? "Add a prompt after the source name." : "Add a question after the source name.")
+      return
+    }
+    const task = output
+      ? { kind: output, format: reportFormat, difficulty, amount }
+      : null
+    const verb = output === "report" ? "Writing the report" : output === "table" ? "Writing the table" : output === "quiz" ? "Writing the quiz" : ""
     setDraft("")
+    setMention(null)
+    setScope(null)
+    setStreamingStudy(output === "table" || output === "quiz" ? output : "")
+    setSearchLabel(verb ? `${verb}${scoped ? ` from ${scoped.token.slice(1)}` : ""}…` : `Looking through ${scoped ? scoped.token.slice(1) : libraryName}…`)
     setError("")
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: query,
+      content: task ? `${studyRequestLabel(task)}\n${shown}` : shown,
       authorId: currentUserId,
       authorName: currentUserName,
     }
     setMessages((current) => [...current, userMessage])
     setPending(true)
     let assistantId = ""
-    let sources: ChatSource[] | undefined
+    let replySources: ChatSource[] | undefined
     try {
-      await readChatStream("/api/chat", { query, organizationId }, (event) => {
+      await readChatStream(
+        "/api/chat",
+        {
+          query: shown,
+          organizationId,
+          ...(scoped ? { documentId: scoped.id } : {}),
+          ...(task
+            ? {
+                output: task.kind,
+                ...(task.kind === "report"
+                  ? { format: task.format }
+                  : task.kind === "table"
+                    ? { amount: task.amount }
+                    : { difficulty: task.difficulty, amount: task.amount }),
+              }
+            : {}),
+        },
+        (event) => {
         if (event.type === "sources") {
-          sources = event.sources
+          replySources = event.sources
           return
         }
         if (event.type === "delta") {
@@ -546,32 +626,43 @@ function ChatPanel({
         }
         if (event.type === "done" && assistantId) {
           const id = assistantId
-          const nextSources = sources
+          const nextSources = replySources
+          const kind = task?.kind === "table" || task?.kind === "quiz" ? task.kind : null
+          setStreamingStudy("")
           setMessages((current) =>
-            current.map((message) => (message.id === id ? { ...message, sources: nextSources } : message)),
+            current.map((message) =>
+              message.id === id
+                ? { ...message, sources: nextSources, content: kind ? packStudy(kind, message.content) : message.content }
+                : message,
+            ),
           )
         }
       })
     } catch (caught) {
       if (assistantId) {
         const id = assistantId
-        setMessages((current) => current.filter((message) => message.id !== id || message.content.trim()))
+        const structured = task?.kind === "table" || task?.kind === "quiz"
+        setMessages((current) =>
+          current.filter((message) => message.id !== id || (!structured && message.content.trim())),
+        )
       }
       setError(caught instanceof Error ? caught.message : "The question could not be answered.")
     } finally {
       setStreamingId("")
+      setStreamingStudy("")
+      setSearchLabel("")
       setPending(false)
     }
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-8">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-3 sm:gap-3 sm:px-8">
         <div className="min-w-0">
           <Tooltip label={libraryName} className="max-w-full">
             <p className="truncate text-sm font-medium">Ask {libraryName}</p>
           </Tooltip>
-          <p className="text-xs text-muted">Visible to everyone in this library</p>
+          <p className="hidden text-xs text-muted sm:block">Visible to everyone in this library</p>
         </div>
         <div className="flex items-center gap-2">
           {confirmClear ? (
@@ -591,7 +682,7 @@ function ChatPanel({
                   })
                   .finally(() => setClearing(false))
               }}
-              className="inline-flex h-9 items-center rounded-full bg-danger px-3 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex h-9 items-center rounded-full bg-danger-fill px-3 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
             >
               {clearing ? "Clearing…" : "Confirm clear"}
             </button>
@@ -615,12 +706,13 @@ function ChatPanel({
               className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-accent disabled:opacity-50"
             >
               <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
+              <span className="sr-only sm:hidden">Refresh</span>
             </button>
           </Tooltip>
         </div>
       </div>
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-8 sm:px-8">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-6 sm:px-8 sm:py-8">
         {!loaded && messages.length === 0 ? (
           <p className="mx-auto max-w-2xl text-sm text-muted">Loading chat…</p>
         ) : null}
@@ -636,8 +728,7 @@ function ChatPanel({
               />
             ) : (
               <>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">Ask</p>
-                <h2 className="mt-3 font-display text-5xl tracking-tight">What do you want to know about {libraryName}?</h2>
+                <h2 className="rise font-display text-4xl tracking-tight sm:text-5xl">What do you want to know about {libraryName}?</h2>
                 <p className="mt-3 text-sm text-muted">{readyCount} {readyCount === 1 ? "source is" : "sources are"} ready.</p>
                 <div className="mt-8 flex flex-wrap gap-2">
                   {suggestions.map((suggestion) => (
@@ -645,7 +736,7 @@ function ChatPanel({
                       key={suggestion}
                       type="button"
                       onClick={() => void ask(suggestion)}
-                      className="rounded-full border border-line bg-card px-4 py-2 text-sm transition hover:border-accent"
+                      className="rounded-full border border-line bg-card px-4 py-2 text-sm transition hover:-translate-y-0.5 hover:border-accent hover:bg-accent hover:text-accent-foreground"
                     >
                       {suggestion}
                     </button>
@@ -657,12 +748,16 @@ function ChatPanel({
         ) : (
           messages.map((message) => {
             const mine = message.role === "user" && message.authorId === currentUserId
+            const study = message.role === "assistant" ? parseStudy(message.content) : null
+            const writingStudy = message.id === streamingId && streamingStudy !== ""
+            const wide = Boolean(study)
+            const requestLine = mine ? message.content.match(/^(Report|Data table|Quiz) · [^\n]+/) : null
             return (
             <article key={message.id} className={cn("mx-auto max-w-2xl", mine ? "flex justify-end" : "")}>
               <div
                 className={cn(
-                  "max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6",
-                  mine ? "bg-accent text-accent-foreground whitespace-pre-wrap" : "border border-line bg-card",
+                  wide ? "w-full" : "max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6",
+                  mine ? "bg-accent text-accent-foreground whitespace-pre-wrap" : wide ? "" : "reading border border-line bg-card",
                 )}
               >
                 {message.role === "user" && message.authorName ? (
@@ -672,7 +767,11 @@ function ChatPanel({
                 ) : null}
                 {message.role === "assistant" ? (
                   <>
-                    {message.content ? (
+                    {writingStudy ? (
+                      <p className="text-sm text-muted">{streamingStudy === "table" ? "Writing the table…" : "Writing the quiz…"}</p>
+                    ) : study ? (
+                      <StudyOutput study={study} sources={message.sources} />
+                    ) : message.content ? (
                       <MarkdownMessage
                         content={message.content}
                         sources={message.sources}
@@ -696,6 +795,11 @@ function ChatPanel({
                       <span className="ml-0.5 inline-block h-4 w-px animate-pulse bg-foreground align-middle" aria-hidden />
                     ) : null}
                   </>
+                ) : requestLine ? (
+                  <>
+                    <p className="mb-1 text-xs font-semibold text-accent-foreground/80">{requestLine[0]}</p>
+                    {message.content.slice(requestLine[0].length).trim()}
+                  </>
                 ) : (
                   message.content
                 )}
@@ -704,45 +808,120 @@ function ChatPanel({
             )
           })
         )}
-        {pending && !streamingId ? <p className="mx-auto max-w-2xl text-sm text-muted">Looking through the library…</p> : null}
+        {pending && !streamingId ? <p className="mx-auto max-w-2xl text-sm text-muted">{searchLabel}</p> : null}
         {error ? <p className="mx-auto max-w-2xl text-sm text-danger">{error}</p> : null}
         <div ref={endRef} />
       </div>
       <form
-        className="border-t border-line bg-card/80 px-4 py-4 sm:px-8"
+        className="border-t border-line bg-card/80 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-4"
         onSubmit={(event: FormEvent) => {
           event.preventDefault()
           void ask(draft)
         }}
       >
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
+        <div className="relative mx-auto max-w-2xl">
+          {mention ? (
+            <ul className="absolute bottom-full left-0 z-10 mb-2 max-h-64 w-full max-w-sm overflow-y-auto rounded-2xl border border-line bg-card p-1 shadow-lg">
+              {mentionMatches.length === 0 ? (
+                <li className="px-3 py-2 text-sm text-muted">
+                  {readySources.length === 0 ? "No ready sources yet." : "No matching sources."}
+                </li>
+              ) : (
+                mentionMatches.map((source, index) => {
+                  const Icon = source.type === "website" ? Globe : source.type === "text" ? NotebookPen : FileText
+                  return (
+                    <li key={source.id}>
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => chooseSource(source)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm",
+                          index === mentionIndex ? "bg-accent/15" : "hover:bg-accent/10",
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0 text-copper" />
+                        <span className="truncate">{source.title}</span>
+                      </button>
+                    </li>
+                  )
+                })
+              )}
+            </ul>
+          ) : null}
+          <StudioBar
+            output={output}
+            format={reportFormat}
+            difficulty={difficulty}
+            amount={amount}
+            disabled={pending || readyCount === 0}
+            onOutput={setOutput}
+            onFormat={setReportFormat}
+            onDifficulty={setDifficulty}
+            onAmount={setAmount}
+          />
+          <div className="composer-shell flex items-end gap-1 rounded-[1.75rem] border border-line bg-card p-1.5">
           <label className="sr-only" htmlFor="question">
             Question
           </label>
           <textarea
+            ref={inputRef}
             id="question"
             value={draft}
             rows={2}
-            onChange={(event) => setDraft(event.target.value)}
+            disabled={pending}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              syncMention(event.target.value, event.target.selectionStart ?? event.target.value.length)
+            }}
+            onClick={(event) => syncMention(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)}
+            onKeyUp={(event) => {
+              if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Enter" || event.key === "Escape") return
+              syncMention(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)
+            }}
             onKeyDown={(event) => {
+              if (mention && mentionMatches.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                event.preventDefault()
+                setMentionIndex((current) => {
+                  const last = mentionMatches.length - 1
+                  if (event.key === "ArrowDown") return current >= last ? 0 : current + 1
+                  return current <= 0 ? last : current - 1
+                })
+                return
+              }
+              if (mention && event.key === "Escape") {
+                event.preventDefault()
+                setMention(null)
+                return
+              }
+              if (mention && mentionMatches.length > 0 && event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault()
+                chooseSource(mentionMatches[Math.min(mentionIndex, mentionMatches.length - 1)])
+                return
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault()
                 void ask(draft)
               }
             }}
-            placeholder="Ask a question about this library"
-            className="min-h-12 flex-1 resize-none rounded-3xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-accent"
+            placeholder={studioPlaceholder(output)}
+            className="min-h-12 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-base outline-none disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-60 sm:text-sm"
           />
-          <Tooltip label={draft.trim() ? "Send question" : "Type a question to send"}>
+          <Tooltip label={pending ? "Writing the answer" : draft.trim() ? (output ? "Generate" : "Send question") : output ? "Add a prompt to generate" : "Type a question to send"}>
             <button
               type="submit"
               disabled={pending || !draft.trim()}
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink text-white disabled:opacity-40"
-              aria-label="Send question"
+              aria-busy={pending}
+              className={cn(
+                "grid h-11 w-11 shrink-0 place-items-center self-end rounded-full bg-ink text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground",
+                pending ? "disabled:translate-y-0 disabled:bg-ink disabled:text-on-ink" : "disabled:translate-y-0 disabled:bg-line disabled:text-muted",
+              )}
+              aria-label={pending ? "Writing the answer" : "Send question"}
             >
-              <Send className="h-4 w-4" />
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </Tooltip>
+          </div>
         </div>
       </form>
     </div>

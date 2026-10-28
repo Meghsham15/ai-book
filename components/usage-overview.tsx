@@ -22,7 +22,7 @@ export function UsageOverview({
     <section className="flex flex-col gap-4" aria-label="Library overview">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(16rem,0.7fr)]">
         <UsageChart days={overview.days} />
-        <article className="rounded-2xl border border-line bg-card px-5 py-4">
+        <article className="border border-line bg-card px-5 py-4">
           <h2 className="text-sm font-medium">Sources</h2>
           <p className="mt-1 text-xs text-muted">How the documents are stored</p>
           <SourceMix files={files} websites={websites} notes={notes} />
@@ -35,7 +35,7 @@ export function UsageOverview({
         <Stat value={questions} label="Questions" detail="Asked in your libraries" />
       </div>
       {libraries.length > 1 ? (
-        <article className="rounded-2xl border border-line bg-card px-5 py-4">
+        <article className="border border-line bg-card px-5 py-4">
           <h2 className="text-sm font-medium">Libraries</h2>
           <p className="mt-1 text-xs text-muted">Bar length compares libraries. The largest value fills the row.</p>
           <ul className="mt-4 space-y-4">
@@ -51,8 +51,8 @@ export function UsageOverview({
 
 function Stat({ value, label, detail }: { value: number; label: string; detail: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-card px-5 py-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">{label}</p>
+    <div className="border border-line bg-card px-5 py-4">
+      <p className="text-sm text-muted">{label}</p>
       <p className="mt-2 font-display text-4xl tracking-tight">{value.toLocaleString("en-US")}</p>
       <p className="mt-1 text-sm text-muted">{detail}</p>
     </div>

@@ -6,10 +6,12 @@ import {
   publicMessage,
 } from "@/lib/errors"
 import { Chunk } from "@/lib/models/chunk"
+import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { Organization } from "@/lib/models/organization"
 import { reserveChunksOrThrow } from "@/lib/limits"
 import { splitText } from "@/lib/rag/chunk"
 import { embedTexts, resolveEmbeddingProvider, type EmbeddingProvider } from "@/lib/rag/embeddings"
+import { activeVectorIndexName } from "@/lib/vector-index"
 import { UserInputError } from "@/lib/errors"
 
 export async function indexDocumentText(input: {
@@ -31,7 +33,9 @@ export async function indexDocumentText(input: {
   const hasVectors = (org.usage?.chunks ?? 0) > 0 || input.previousChunks > 0
   if (stored && hasVectors && stored !== requested) {
     throw new UserInputError(
-      `This library uses ${stored} embeddings. Delete its sources, then add them again to switch to ${requested}.`,
+      requested === "nvidia"
+        ? "This library was indexed with a different embedding model. Remove its sources and add them again so they are stored as NVIDIA vectors in the nvidiachunks collection."
+        : `This library uses ${stored} embeddings. Delete its sources, then add them again to switch to ${requested}.`,
     )
   }
   const provider: EmbeddingProvider = stored && hasVectors ? stored : requested
@@ -41,10 +45,13 @@ export async function indexDocumentText(input: {
 
   let replaced = false
   try {
-    const vectors = await embedTexts(pieces, provider)
-    await Chunk.deleteMany({ documentId: input.documentId })
+    const vectors = await embedTexts(pieces, provider, "passage")
+    await Promise.all([
+      NvidiaChunk.deleteMany({ documentId: input.documentId }),
+      Chunk.deleteMany({ documentId: input.documentId }),
+    ])
     replaced = true
-    await Chunk.insertMany(
+    await NvidiaChunk.insertMany(
       pieces.map((text, chunkIndex) => ({
         organizationId: input.orgId,
         documentId: input.documentId,
@@ -67,7 +74,7 @@ export async function indexDocumentText(input: {
         $set: {
           embeddingProvider: provider,
           embeddingDimensions: vectors[0]?.length ?? org.embeddingDimensions ?? 0,
-          vectorIndexName: process.env.ATLAS_VECTOR_INDEX || org.vectorIndexName || "chunk_vector_index",
+          vectorIndexName: activeVectorIndexName(),
         },
       },
     )
@@ -79,7 +86,10 @@ export async function indexDocumentText(input: {
         await Organization.updateOne({ _id: input.orgId }, { $inc: { "usage.chunks": -extra } })
       }
     } else {
-      await Chunk.deleteMany({ documentId: input.documentId })
+      await Promise.all([
+        NvidiaChunk.deleteMany({ documentId: input.documentId }),
+        Chunk.deleteMany({ documentId: input.documentId }),
+      ])
       await Organization.updateOne(
         { _id: input.orgId },
         { $inc: { "usage.chunks": -(input.previousChunks + extra) } },

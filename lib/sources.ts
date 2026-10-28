@@ -4,6 +4,7 @@ import { publicMessage, IndexingError, AuthzError } from "@/lib/errors"
 import { releaseDocumentSlot, reserveDocumentSlot } from "@/lib/limits"
 import { DocumentModel } from "@/lib/models/document"
 import { Chunk } from "@/lib/models/chunk"
+import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { Organization } from "@/lib/models/organization"
 import { indexDocumentText } from "@/lib/rag/index-document"
 import type { DocumentType } from "@/types/domain"
@@ -104,7 +105,10 @@ export async function deleteIndexedSource(orgId: string, documentId: string) {
   if (!doc) throw new AuthzError("Source not found.", 404)
   const chunkCount = doc.chunkCount
   const type = doc.type
-  await Chunk.deleteMany({ documentId: doc._id })
+  await Promise.all([
+    NvidiaChunk.deleteMany({ documentId: doc._id }),
+    Chunk.deleteMany({ documentId: doc._id }),
+  ])
   await DocumentModel.deleteOne({ _id: doc._id })
   await releaseDocumentSlot(orgId, type)
   if (chunkCount > 0) {

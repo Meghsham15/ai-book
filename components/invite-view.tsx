@@ -82,7 +82,7 @@ export function InviteView({
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: `/login?callbackUrl=/invite/${invite.token}` })}
-          className="mt-4 h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white"
+          className="mt-4 h-11 rounded-none bg-ink px-5 text-sm font-semibold text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground disabled:translate-y-0 disabled:opacity-60"
         >
           Sign out
         </button>
@@ -101,7 +101,7 @@ export function InviteView({
             type="button"
             disabled={pending}
             onClick={() => void respond("accept")}
-            className="h-11 rounded-full bg-accent px-5 text-sm font-semibold text-accent-foreground disabled:opacity-60"
+            className="h-11 rounded-none bg-accent px-5 text-sm font-semibold text-accent-foreground disabled:opacity-60"
           >
             {pending ? (transfer ? "Accepting…" : "Joining…") : transfer ? "Accept ownership" : "Accept invite"}
           </button>
@@ -109,7 +109,7 @@ export function InviteView({
             type="button"
             disabled={pending}
             onClick={() => void respond("decline")}
-            className="h-11 rounded-full px-5 text-sm text-danger disabled:opacity-60"
+            className="h-11 rounded-none px-5 text-sm text-danger disabled:opacity-60"
           >
             Decline
           </button>
@@ -122,11 +122,8 @@ export function InviteView({
     <div className="min-h-dvh">
       <TopBar user={user} />
       <main className="mx-auto w-full max-w-xl px-4 py-12">
-        <section className="rounded-2xl border border-line bg-card p-6 shadow-[0_12px_40px_rgba(28,25,23,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-copper">
-            {transfer ? "Ownership" : "Invitation"}
-          </p>
-          <h1 className="mt-3 font-display text-4xl tracking-tight">
+        <section>
+          <h1 className="font-display text-5xl leading-none">
             {invite ? invite.organizationName : "Invitation unavailable"}
           </h1>
           {body}

@@ -4,9 +4,13 @@ import { Children, cloneElement, isValidElement, useEffect, useRef, useState, ty
 import { createPortal } from "react-dom"
 import type { Components } from "react-markdown"
 import ReactMarkdown from "react-markdown"
+import rehypeKatex from "rehype-katex"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
+import "katex/dist/katex.min.css"
+import { citationDetail } from "@/lib/format"
 import type { ChatSource } from "@/types/domain"
 
 function markdownComponents(onCitation?: (index: number) => void, sources?: ChatSource[], activeCitation?: number | null): Components {
@@ -43,15 +47,15 @@ function markdownComponents(onCitation?: (index: number) => void, sources?: Chat
   th: ({ children }) => <th className="border-b border-line px-3 py-2 text-left font-semibold">{cited(children)}</th>,
   td: ({ children }) => <td className="border-b border-line px-3 py-2 align-top">{cited(children)}</td>,
   pre: ({ children }) => (
-    <pre className="mt-2 overflow-x-auto rounded-xl bg-sidebar px-3 py-2 text-xs leading-5 text-sidebar-foreground first:mt-0">
+    <pre className="mt-2 overflow-x-auto whitespace-pre rounded-xl border border-line bg-card px-4 py-3 font-mono text-sm leading-5 text-foreground first:mt-0">
       {children}
     </pre>
   ),
   code: ({ className, children }) =>
-    className ? (
-      <code className={className}>{children}</code>
+    blockCode(className, children) ? (
+      <code className={`whitespace-pre font-mono text-foreground ${className ?? ""}`}>{children}</code>
     ) : (
-      <code className="rounded bg-background px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
+      <code className="rounded bg-background px-1 py-0.5 font-mono text-[0.85em] text-foreground">{children}</code>
     ),
   }
 }
@@ -69,13 +73,18 @@ export function MarkdownMessage({
 }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw, rehypeSanitize]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeRaw, rehypeSanitize, [rehypeKatex, { strict: "ignore" }]]}
       components={markdownComponents(onCitation, sources, activeCitation)}
     >
       {content}
     </ReactMarkdown>
   )
+}
+
+function blockCode(className: string | undefined, children: ReactNode) {
+  if (className?.includes("language-")) return true
+  return Children.toArray(children).some((child) => typeof child === "string" && child.includes("\n"))
 }
 
 function renderCitations(
@@ -134,6 +143,7 @@ function CitationMark({
   const [hover, setHover] = useState(false)
   const [box, setBox] = useState<{ top: number; left: number; above: boolean } | null>(null)
   const open = hover || active
+  const place = citationDetail(source?.excerpt ?? "")
 
   useEffect(() => {
     if (!open) return
@@ -166,8 +176,8 @@ function CitationMark({
         onMouseLeave={() => setHover(false)}
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
-        className={`mx-0.5 inline-flex h-5 items-center justify-center rounded-none border px-1 align-baseline font-mono text-[11px] font-semibold leading-none ${
-          active ? "border-accent bg-accent text-accent-foreground" : "border-accent/40 bg-accent/10 text-accent"
+        className={`mx-0.5 inline-flex h-5 items-center justify-center border px-1 align-baseline text-[11px] font-semibold leading-none transition hover:-translate-y-px ${
+          active ? "border-copper bg-copper text-white dark:text-[#1a0d0b]" : "border-copper/40 bg-copper/10 text-copper"
         }`}
         aria-expanded={open}
         aria-label={source ? `Source ${citation}, ${source.title}` : `Source ${citation}`}
@@ -178,11 +188,11 @@ function CitationMark({
         ? createPortal(
             <span
               role="tooltip"
-              className="pointer-events-none fixed z-30 w-64 rounded-xl border border-line bg-card px-3 py-2 text-left shadow-[0_10px_30px_rgba(28,25,23,0.12)]"
+              className="pointer-events-none fixed z-30 w-64 border border-line bg-card px-3 py-2 text-left shadow-[0_16px_40px_-24px_rgba(23,32,51,0.45)]"
               style={{ top: box.top, left: box.left, transform: `translate(-50%, ${box.above ? "-100%" : "0"})` }}
             >
               <span className="block truncate text-xs font-semibold text-foreground">{source.title}</span>
-              <span className="mt-1 line-clamp-4 block text-xs leading-5 text-muted">{source.excerpt}</span>
+              {place ? <span className="mt-1 block text-xs leading-5 text-muted">{place}</span> : null}
             </span>,
             document.body,
           )
