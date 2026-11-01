@@ -1,42 +1,144 @@
+export const errorCodes = {
+  AUTH_REQUIRED: "AUTH_REQUIRED",
+  LIBRARY_NOT_FOUND: "LIBRARY_NOT_FOUND",
+  LIBRARY_FORBIDDEN: "LIBRARY_FORBIDDEN",
+  ROLE_FORBIDDEN: "ROLE_FORBIDDEN",
+  LIBRARY_DELETED: "LIBRARY_DELETED",
+  OWNER_REQUIRED: "OWNER_REQUIRED",
+  MEMBER_NOT_FOUND: "MEMBER_NOT_FOUND",
+  MEMBER_REQUIRED: "MEMBER_REQUIRED",
+  SOURCE_NOT_FOUND: "SOURCE_NOT_FOUND",
+  SOURCE_PROCESSING: "SOURCE_PROCESSING",
+  NOTE_ONLY: "NOTE_ONLY",
+  INPUT_INVALID: "INPUT_INVALID",
+  INVALID_JSON: "INVALID_JSON",
+  EMAIL_INVALID: "EMAIL_INVALID",
+  LIBRARY_NAME_INVALID: "LIBRARY_NAME_INVALID",
+  LIBRARY_NAME_MISMATCH: "LIBRARY_NAME_MISMATCH",
+  TITLE_REQUIRED: "TITLE_REQUIRED",
+  NOTE_EMPTY: "NOTE_EMPTY",
+  WEBSITE_URL_REQUIRED: "WEBSITE_URL_REQUIRED",
+  FILE_LINK_REQUIRED: "FILE_LINK_REQUIRED",
+  QUESTION_REQUIRED: "QUESTION_REQUIRED",
+  QUESTION_AFTER_SOURCE: "QUESTION_AFTER_SOURCE",
+  SOURCE_ID_INVALID: "SOURCE_ID_INVALID",
+  CHAT_REQUIRED: "CHAT_REQUIRED",
+  CHAT_NOT_FOUND: "CHAT_NOT_FOUND",
+  SOURCE_NOT_READY: "SOURCE_NOT_READY",
+  LIBRARY_REQUIRED: "LIBRARY_REQUIRED",
+  FILE_REQUIRED: "FILE_REQUIRED",
+  FILE_EMPTY: "FILE_EMPTY",
+  FILE_TOO_LARGE: "FILE_TOO_LARGE",
+  FILE_TYPE_UNSUPPORTED: "FILE_TYPE_UNSUPPORTED",
+  FILE_UNREADABLE: "FILE_UNREADABLE",
+  PDF_UNREADABLE: "PDF_UNREADABLE",
+  PDF_PICTURES_UNREADABLE: "PDF_PICTURES_UNREADABLE",
+  PDF_VISION_KEY_MISSING: "PDF_VISION_KEY_MISSING",
+  PDF_VISION_FAILED: "PDF_VISION_FAILED",
+  SHARED_FILE_TYPE: "SHARED_FILE_TYPE",
+  SHARED_LINK_ARCHIVE: "SHARED_LINK_ARCHIVE",
+  SHARED_LINK_PRIVATE: "SHARED_LINK_PRIVATE",
+  SHARED_LINK_DOWNLOAD_FAILED: "SHARED_LINK_DOWNLOAD_FAILED",
+  SHARED_LINK_REDIRECT: "SHARED_LINK_REDIRECT",
+  DRIVE_FOLDER: "DRIVE_FOLDER",
+  DRIVE_LINK_INVALID: "DRIVE_LINK_INVALID",
+  GOOGLE_DOC_LINK_INVALID: "GOOGLE_DOC_LINK_INVALID",
+  SHARED_LINK_UNSUPPORTED: "SHARED_LINK_UNSUPPORTED",
+  WEBSITE_URL_INVALID: "WEBSITE_URL_INVALID",
+  WEBSITE_URL_PROTOCOL: "WEBSITE_URL_PROTOCOL",
+  WEBSITE_URL_BLOCKED: "WEBSITE_URL_BLOCKED",
+  WEBSITE_EMPTY: "WEBSITE_EMPTY",
+  WEBSITE_REDIRECT: "WEBSITE_REDIRECT",
+  WEBSITE_FETCH_FAILED: "WEBSITE_FETCH_FAILED",
+  WEBSITE_IS_PDF: "WEBSITE_IS_PDF",
+  EMBEDDING_PROVIDER_MISMATCH: "EMBEDDING_PROVIDER_MISMATCH",
+  SOURCE_LIMIT: "SOURCE_LIMIT",
+  CHUNK_LIMIT: "CHUNK_LIMIT",
+  LIMIT_BELOW_USAGE: "LIMIT_BELOW_USAGE",
+  CHAT_RATE_LIMIT: "CHAT_RATE_LIMIT",
+  MODEL_BUSY: "MODEL_BUSY",
+  MONGODB_MISSING: "MONGODB_MISSING",
+  NVIDIA_CHAT_KEY_MISSING: "NVIDIA_CHAT_KEY_MISSING",
+  NVIDIA_CHAT_KEY_INVALID: "NVIDIA_CHAT_KEY_INVALID",
+  NVIDIA_CHAT_FAILED: "NVIDIA_CHAT_FAILED",
+  ANSWER_EMPTY: "ANSWER_EMPTY",
+  SMTP_MISSING: "SMTP_MISSING",
+  INVITE_EMAIL_FAILED: "INVITE_EMAIL_FAILED",
+  NVIDIA_EMBED_KEY_MISSING: "NVIDIA_EMBED_KEY_MISSING",
+  NVIDIA_EMBED_AUTH: "NVIDIA_EMBED_AUTH",
+  NVIDIA_EMBED_EMPTY: "NVIDIA_EMBED_EMPTY",
+  NVIDIA_EMBED_BATCH: "NVIDIA_EMBED_BATCH",
+  NVIDIA_EMBED_FAILED: "NVIDIA_EMBED_FAILED",
+  GROQ_EMBED_KEY_MISSING: "GROQ_EMBED_KEY_MISSING",
+  GROQ_EMBED_EMPTY: "GROQ_EMBED_EMPTY",
+  GROQ_EMBED_FAILED: "GROQ_EMBED_FAILED",
+  XAI_EMBED_KEY_MISSING: "XAI_EMBED_KEY_MISSING",
+  XAI_EMBED_FAILED: "XAI_EMBED_FAILED",
+  GEMINI_EMBED_KEY_MISSING: "GEMINI_EMBED_KEY_MISSING",
+  GEMINI_EMBED_EMPTY: "GEMINI_EMBED_EMPTY",
+  GEMINI_EMBED_FAILED: "GEMINI_EMBED_FAILED",
+  ALREADY_MEMBER: "ALREADY_MEMBER",
+  TRANSFER_PENDING: "TRANSFER_PENDING",
+  ALREADY_OWNER: "ALREADY_OWNER",
+  TRANSFER_BEFORE_ROLE: "TRANSFER_BEFORE_ROLE",
+  TRANSFER_BEFORE_REMOVE: "TRANSFER_BEFORE_REMOVE",
+  TRANSFER_TARGET_REQUIRED: "TRANSFER_TARGET_REQUIRED",
+  TRANSFER_INACTIVE: "TRANSFER_INACTIVE",
+  INVITE_ID_INVALID: "INVITE_ID_INVALID",
+  INVITE_NOT_PENDING: "INVITE_NOT_PENDING",
+  INVITE_TOKEN_INVALID: "INVITE_TOKEN_INVALID",
+  INVITE_INACTIVE: "INVITE_INACTIVE",
+  INVITE_EMAIL_MISMATCH: "INVITE_EMAIL_MISMATCH",
+  INDEX_FAILED: "INDEX_FAILED",
+  INTERNAL: "INTERNAL",
+} as const
+
+export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes]
+
 export class AppError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: ErrorCode,
   ) {
     super(message)
     this.name = new.target.name
   }
 }
 
-export class AuthzError extends AppError {}
+export class AuthzError extends AppError {
+  constructor(message: string, status = 403, code?: ErrorCode) {
+    super(message, status, code ?? (status === 401 ? errorCodes.AUTH_REQUIRED : status === 404 ? errorCodes.LIBRARY_NOT_FOUND : errorCodes.ROLE_FORBIDDEN))
+  }
+}
 
 export class LimitError extends AppError {
-  constructor(message: string) {
-    super(message, 409)
+  constructor(message: string, code: ErrorCode = errorCodes.SOURCE_LIMIT) {
+    super(message, 409, code)
   }
 }
 
 export class UserInputError extends AppError {
-  constructor(message: string) {
-    super(message, 400)
+  constructor(message: string, code: ErrorCode = errorCodes.INPUT_INVALID) {
+    super(message, 400, code)
   }
 }
 
 export class ConfigError extends AppError {
-  constructor(message: string) {
-    super(message, 503)
+  constructor(message: string, code: ErrorCode = errorCodes.MONGODB_MISSING) {
+    super(message, 503, code)
   }
 }
 
 export class UpstreamError extends AppError {
-  constructor(message: string) {
-    super(message, 502)
+  constructor(message: string, code: ErrorCode = errorCodes.NVIDIA_CHAT_FAILED) {
+    super(message, 502, code)
   }
 }
 
 export class RateLimitError extends AppError {
-  constructor(message: string) {
-    super(message, 429)
+  constructor(message: string, code: ErrorCode = errorCodes.CHAT_RATE_LIMIT) {
+    super(message, 429, code)
   }
 }
 
@@ -45,12 +147,22 @@ export class IndexingError extends AppError {
   constructor(
     message: string,
     readonly destroyed: boolean,
+    code: ErrorCode = errorCodes.INDEX_FAILED,
   ) {
-    super(message, 422)
+    super(message, 422, code)
   }
 }
 
 export function publicMessage(error: unknown) {
   if (error instanceof AppError) return error.message
   return "Something went wrong. Please try again."
+}
+
+export function publicCode(error: unknown): ErrorCode {
+  if (error instanceof AppError) return error.code
+  return errorCodes.INTERNAL
+}
+
+export function formatApiError(error: unknown) {
+  return `${publicMessage(error)} [${publicCode(error)}]`
 }

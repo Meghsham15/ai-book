@@ -52,7 +52,14 @@ export const websiteSourceSchema = z.object({
   url: z.string().trim().min(1, "Add a website URL.").max(2000),
 })
 
-export const jsonSourceSchema = z.discriminatedUnion("type", [textSourceSchema, websiteSourceSchema])
+export const fileLinkSourceSchema = z.object({
+  organizationId: z.string().trim().min(1),
+  type: z.literal("file"),
+  title: z.string().trim().max(120).optional(),
+  url: z.string().trim().min(1, "Add a file link.").max(2000),
+})
+
+export const jsonSourceSchema = z.discriminatedUnion("type", [textSourceSchema, websiteSourceSchema, fileLinkSourceSchema])
 
 export const updateDocumentSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
@@ -66,6 +73,11 @@ export const chatSchema = z.object({
     .string()
     .trim()
     .regex(/^[a-f\d]{24}$/i, "Choose a source from the list.")
+    .optional(),
+  chatId: z
+    .string()
+    .trim()
+    .regex(/^[a-f\d]{24}$/i, "Choose a chat.")
     .optional(),
   output: z.enum(studyKinds).optional(),
   format: z.enum(reportFormats).optional(),

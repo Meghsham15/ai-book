@@ -20,12 +20,12 @@ export const DELETE = withApi<Context>(async (request, context) => {
   const { orgId } = await context.params
   const { user, org } = await requireOrgAccess(orgId, ["admin"])
   if (!sameId(org.ownerId, user.id)) {
-    throw new AuthzError("Only the owner can delete this library.", 403)
+    throw new AuthzError("Only the owner can delete this library.", 403, "OWNER_REQUIRED")
   }
   const body = await readJson(request)
   const name = body && typeof body === "object" && "name" in body && typeof body.name === "string" ? body.name.trim() : ""
   if (name !== org.name) {
-    throw new UserInputError("Type the library name exactly to confirm.")
+    throw new UserInputError("Type the library name exactly to confirm.", "LIBRARY_NAME_MISMATCH")
   }
   await deleteOrganization(org._id, user.id)
   return NextResponse.json({ ok: true })

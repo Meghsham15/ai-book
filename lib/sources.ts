@@ -1,6 +1,6 @@
 import "server-only"
 
-import { publicMessage, IndexingError, AuthzError } from "@/lib/errors"
+import { formatApiError, IndexingError, AuthzError } from "@/lib/errors"
 import { releaseDocumentSlot, reserveDocumentSlot } from "@/lib/limits"
 import { DocumentModel } from "@/lib/models/document"
 import { Chunk } from "@/lib/models/chunk"
@@ -48,7 +48,7 @@ export async function createIndexedSource(input: {
       {
         status: "failed",
         chunkCount: 0,
-        errorMessage: publicMessage(error).slice(0, 300),
+        errorMessage: formatApiError(error).slice(0, 300),
       },
     )
     throw error
@@ -61,10 +61,10 @@ export async function updateIndexedSource(
   input: { title?: string; content?: string },
 ) {
   const doc = await DocumentModel.findOne({ _id: documentId, organizationId: orgId })
-  if (!doc) throw new AuthzError("Source not found.", 404)
-  if (doc.status === "processing") throw new AuthzError("This source is still processing.", 409)
+  if (!doc) throw new AuthzError("Source not found.", 404, "SOURCE_NOT_FOUND")
+  if (doc.status === "processing") throw new AuthzError("This source is still processing.", 409, "SOURCE_PROCESSING")
   if (input.content && doc.type !== "text") {
-    throw new AuthzError("Only notes can be rewritten. Upload a replacement file for other sources.", 400)
+    throw new AuthzError("Only notes can be rewritten. Upload a replacement file for other sources.", 400, "NOTE_ONLY")
   }
 
   if (!input.content) {
@@ -93,7 +93,7 @@ export async function updateIndexedSource(
     if (error instanceof IndexingError && error.destroyed) {
       doc.status = "failed"
       doc.chunkCount = 0
-      doc.errorMessage = publicMessage(error).slice(0, 300)
+      doc.errorMessage = formatApiError(error).slice(0, 300)
       await doc.save()
     }
     throw error
@@ -102,7 +102,7 @@ export async function updateIndexedSource(
 
 export async function deleteIndexedSource(orgId: string, documentId: string) {
   const doc = await DocumentModel.findOne({ _id: documentId, organizationId: orgId })
-  if (!doc) throw new AuthzError("Source not found.", 404)
+  if (!doc) throw new AuthzError("Source not found.", 404, "SOURCE_NOT_FOUND")
   const chunkCount = doc.chunkCount
   const type = doc.type
   await Promise.all([

@@ -23,7 +23,7 @@ globalForMongoose.mongooseCache = cached
 export async function connectDB() {
   const uri = process.env.MONGODB_URI
   if (!isConfiguredSecret(uri)) {
-    throw new ConfigError("Add your MongoDB connection string to MONGODB_URI in .env.local.")
+    throw new ConfigError("Add your MongoDB connection string to MONGODB_URI in .env.local.", "MONGODB_MISSING")
   }
 
   if (cached.conn) return cached.conn

@@ -22,11 +22,11 @@ export async function indexDocumentText(input: {
 }) {
   const pieces = await splitText(input.text)
   if (pieces.length === 0) {
-    throw new UserInputError("No readable text was found in that source.")
+    throw new UserInputError("No readable text was found in that source.", "FILE_UNREADABLE")
   }
 
   const org = await Organization.findById(input.orgId)
-  if (!org) throw new IndexingError("Organization not found.", false)
+  if (!org) throw new IndexingError("Organization not found.", false, "LIBRARY_NOT_FOUND")
 
   const requested = await resolveEmbeddingProvider()
   const stored = org.embeddingProvider
@@ -36,6 +36,7 @@ export async function indexDocumentText(input: {
       requested === "nvidia"
         ? "This library was indexed with a different embedding model. Remove its sources and add them again so they are stored as NVIDIA vectors in the nvidiachunks collection."
         : `This library uses ${stored} embeddings. Delete its sources, then add them again to switch to ${requested}.`,
+      "EMBEDDING_PROVIDER_MISMATCH",
     )
   }
   const provider: EmbeddingProvider = stored && hasVectors ? stored : requested
@@ -98,7 +99,8 @@ export async function indexDocumentText(input: {
 
     if (error instanceof IndexingError) throw error
     const message = error instanceof AppError ? error.message : "This source could not be indexed."
+    const code = error instanceof AppError ? error.code : "INDEX_FAILED"
     if (!(error instanceof AppError)) console.error(error)
-    throw new IndexingError(message || publicMessage(error), replaced)
+    throw new IndexingError(message || publicMessage(error), replaced, code)
   }
 }

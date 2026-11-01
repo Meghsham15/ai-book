@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { clearLibraryChat, listLibraryChat, recentLibraryChat, recordLibraryChat } from "@/lib/chat-history"
+import { clearLibraryChat, listLibraryChat, recentLibraryChat, recordLibraryChat, resolveLibraryChat } from "@/lib/chat-history"
 import type { ChatStreamEvent } from "@/lib/chat-stream"
 import { sourcePlaces, sourceQuestion } from "@/lib/format"
 import { readJson, withApi } from "@/lib/http"
-import { AppError, RateLimitError, UpstreamError, UserInputError, publicMessage } from "@/lib/errors"
+import { AppError, RateLimitError, UpstreamError, UserInputError, publicCode, publicMessage } from "@/lib/errors"
 import { DocumentModel } from "@/lib/models/document"
 import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { requireOrgAccess } from "@/lib/org-access"
@@ -19,26 +19,33 @@ import type { ChatSource } from "@/types/domain"
 export const maxDuration = 60
 
 export const DELETE = withApi(async (request) => {
-  const organizationId = new URL(request.url).searchParams.get("organizationId") || ""
+  const url = new URL(request.url)
+  const organizationId = url.searchParams.get("organizationId") || ""
+  const chatId = url.searchParams.get("chatId") || ""
   const { org } = await requireOrgAccess(organizationId, ["admin", "manager", "member"])
-  await clearLibraryChat(org._id)
+  const chat = await resolveLibraryChat(org._id, chatId || undefined)
+  await clearLibraryChat(org._id, chat._id)
   return NextResponse.json({ ok: true })
 })
 
 export const GET = withApi(async (request) => {
-  const organizationId = new URL(request.url).searchParams.get("organizationId") || ""
+  const url = new URL(request.url)
+  const organizationId = url.searchParams.get("organizationId") || ""
+  const chatId = url.searchParams.get("chatId") || ""
   const { org } = await requireOrgAccess(organizationId, ["admin", "manager", "member"])
-  const messages = await listLibraryChat(org._id)
-  return NextResponse.json({ messages })
+  const chat = await resolveLibraryChat(org._id, chatId || undefined)
+  const messages = await listLibraryChat(org._id, chat._id)
+  return NextResponse.json({ messages, chatId: String(chat._id), title: chat.title })
 })
 
 export const POST = withApi(async (request) => {
   const input = chatSchema.parse(await readJson(request))
   const { user, org } = await requireOrgAccess(input.organizationId, ["admin", "manager", "member"])
+  const chat = await resolveLibraryChat(org._id, input.chatId)
   const readyCount = await DocumentModel.countDocuments({ organizationId: org._id, status: "ready" })
 
   if (readyCount === 0) {
-    return streamReply(request, org._id, user, input.query, "This library doesn't have any ready sources yet. Add a file, website, or note, then ask again.", [])
+    return streamReply(request, org._id, chat._id, user, input.query, "This library doesn't have any ready sources yet. Add a file, website, or note, then ask again.", [])
   }
 
   const provider = await resolveEmbeddingProvider()
@@ -47,6 +54,7 @@ export const POST = withApi(async (request) => {
     return streamReply(
       request,
       org._id,
+      chat._id,
       user,
       input.query,
       "This library was indexed with a different embedding model. Remove its sources and add them again so questions can search the NVIDIA vectors.",
@@ -70,10 +78,10 @@ export const POST = withApi(async (request) => {
       organizationId: org._id,
       status: "ready",
     }).select("title")
-    if (!scoped) throw new UserInputError("Choose a ready source from this library.")
+    if (!scoped) throw new UserInputError("Choose a ready source from this library.", "SOURCE_NOT_READY")
     scopeTitle = scoped.title
     question = sourceQuestion(input.query, scoped.title)
-    if (!question) throw new UserInputError("Add a question after the source name.")
+    if (!question) throw new UserInputError("Add a question after the source name.", "QUESTION_AFTER_SOURCE")
   }
 
   let chunks = await retrieveChunks({
@@ -92,12 +100,12 @@ export const POST = withApi(async (request) => {
     const empty = input.documentId
       ? "I couldn't find anything in that source that matches that question."
       : "I couldn't find anything in this library that matches that question."
-    return streamReply(request, org._id, user, savedQuery, empty, [])
+    return streamReply(request, org._id, chat._id, user, savedQuery, empty, [])
   }
 
   const quota = consumeChatQuota(user.id)
   if (!quota.ok) {
-    throw new RateLimitError("You've asked a lot in the last minute. Wait a moment and try again.")
+    throw new RateLimitError("You've asked a lot in the last minute. Wait a moment and try again.", "CHAT_RATE_LIMIT")
   }
 
   const documentIds = [...new Set(chunks.map((chunk) => chunk.documentId))]
@@ -129,7 +137,7 @@ export const POST = withApi(async (request) => {
   }))
 
   assertNvidiaConfigured()
-  const history = task ? [] : await recentLibraryChat(org._id)
+  const history = task ? [] : await recentLibraryChat(org._id, chat._id)
   const messages = buildChatMessages({
     query: question,
     scopeTitle: scopeTitle || undefined,
@@ -153,13 +161,14 @@ export const POST = withApi(async (request) => {
     if (!answer.trim()) {
       const recovered = (await completeNvidiaAnswer(messages, request.signal)).trim()
       if (request.signal.aborted) return
-      if (!recovered) throw new UpstreamError("The model returned an empty answer. Try asking again.")
+      if (!recovered) throw new UpstreamError("The model returned an empty answer. Try asking again.", "ANSWER_EMPTY")
       answer = recovered
       send({ type: "delta", text: recovered })
     }
     const stored = task && task.kind !== "report" ? packStudy(task.kind, answer) : answer
     await recordLibraryChat({
       organizationId: org._id,
+      chatId: chat._id,
       query: savedQuery,
       answer: stored,
       sources,
@@ -180,6 +189,7 @@ function broadTableQuery(query: string) {
 function streamReply(
   request: Request,
   organizationId: Parameters<typeof recordLibraryChat>[0]["organizationId"],
+  chatId: Parameters<typeof recordLibraryChat>[0]["chatId"],
   user: { id: string; name: string },
   query: string,
   answer: string,
@@ -188,6 +198,7 @@ function streamReply(
   return chatStream(request, async (send) => {
     await recordLibraryChat({
       organizationId,
+      chatId,
       query,
       answer,
       sources,
@@ -214,7 +225,7 @@ function chatStream(request: Request, run: (send: (event: ChatStreamEvent) => vo
       } catch (error) {
         if (request.signal.aborted || (error instanceof Error && error.name === "AbortError")) return
         if (!(error instanceof AppError)) console.error(error)
-        send({ type: "error", error: publicMessage(error) })
+        send({ type: "error", error: publicMessage(error), code: publicCode(error) })
       } finally {
         closed = true
         try {

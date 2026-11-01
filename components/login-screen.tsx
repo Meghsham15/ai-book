@@ -48,12 +48,11 @@ export function LoginScreen({
           <BrandMark lockup />
           <ThemeToggle compact />
         </div>
-        <div className="max-w-xl py-12">
-          <p className="text-sm font-medium text-copper">Your research partner</p>
-          <h1 className="rise mt-3 font-display text-4xl leading-[1.05] sm:text-6xl">
+        <div className="max-w-xl py-16">
+          <h1 className="font-display text-4xl leading-[1.12] sm:text-6xl">
             Understand anything in your library.
           </h1>
-          <p className="mt-6 max-w-[46ch] text-base leading-7 text-muted">
+          <p className="mt-6 max-w-[42ch] text-base leading-7 text-muted">
             Add the files, pages, and notes you trust. Ask about them. The reply is written only from that material, and each claim points back to the passage it came from.
           </p>
           <div className="mt-10">
@@ -64,7 +63,7 @@ export function LoginScreen({
             <ol className="mt-5 space-y-4">
               {steps.map((step, index) => (
                 <li key={step.title} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3">
-                  <span className="grid h-7 w-7 place-items-center border border-line text-xs font-semibold text-copper">{index + 1}</span>
+                  <span className="pt-0.5 text-sm font-medium text-muted">{index + 1}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">{step.title}</p>
                     <p className="mt-1 text-sm leading-6 text-muted">{step.body}</p>
@@ -73,20 +72,20 @@ export function LoginScreen({
               ))}
             </ol>
           </div>
-          <article className="mt-8 max-w-md border border-line bg-card px-5 py-5 shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--accent)_55%,transparent)]">
+          <article className="reading mt-10 max-w-md rounded-3xl border border-line bg-card px-5 py-5">
             <p className="text-sm text-muted">Where does the handbook set the handover?</p>
-            <p className="mt-3 font-display text-2xl leading-snug">The handover window is 14 days after the contract ends.</p>
-            <p className="mt-4 inline-flex items-center gap-2 border-l-4 border-copper pl-3 text-sm text-muted">Handbook, page 4</p>
+            <p className="mt-3 text-2xl leading-snug">The handover window is 14 days after the contract ends.</p>
+            <p className="mt-4 text-sm text-accent">Handbook, page 4</p>
           </article>
         </div>
         <p className="max-w-md text-sm leading-6 text-muted">Each library keeps its own sources, members, and chat.</p>
       </section>
-      <section className="flex items-center border-line bg-sidebar px-6 py-16 text-sidebar-foreground sm:px-12 lg:border-l">
-        <div className="w-full max-w-sm">
-          <h2 className="font-display text-4xl leading-none">Sign in</h2>
-          <p className="mt-3 text-sm leading-6 text-sidebar-foreground/75">Use the Google account that should open your libraries.</p>
+      <section className="flex items-center px-6 py-16 sm:px-12">
+        <div className="w-full max-w-sm rounded-3xl border border-line bg-card px-6 py-8">
+          <h2 className="text-2xl font-medium">Sign in</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">Use the Google account that should open your libraries.</p>
           {!googleConfigured ? (
-            <p className="mt-6 border border-copper px-4 py-3 text-sm leading-6">
+            <p className="mt-6 rounded-2xl border border-line px-4 py-3 text-sm leading-6 text-danger">
               Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local before signing in.
             </p>
           ) : null}
@@ -97,7 +96,7 @@ export function LoginScreen({
               setPending(true)
               void signIn("google", { callbackUrl })
             }}
-            className="mt-8 flex h-12 w-full items-center justify-center gap-3 border border-line bg-card px-4 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-8 flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-card px-4 text-sm font-medium text-foreground hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <GoogleMark />}
             {pending ? "Redirecting to Google…" : "Continue with Google"}

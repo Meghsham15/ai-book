@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { titleFromFilename } from "@/lib/format"
 import { readJson, withApi } from "@/lib/http"
-import { extractUploadText, extractWebsiteText } from "@/lib/extract"
+import { extractFileBytes, extractUploadText, extractWebsiteText } from "@/lib/extract"
+import { downloadSharedFile } from "@/lib/shared-file"
 import { requireOrgAccess } from "@/lib/org-access"
 import { createIndexedSource } from "@/lib/sources"
 import { UserInputError } from "@/lib/errors"
@@ -13,7 +14,7 @@ export const maxDuration = 300
 
 export const GET = withApi(async (request) => {
   const organizationId = new URL(request.url).searchParams.get("organizationId")
-  if (!organizationId) throw new UserInputError("Choose a library.")
+  if (!organizationId) throw new UserInputError("Choose a library.", "LIBRARY_REQUIRED")
   const { org } = await requireOrgAccess(organizationId, ["admin", "manager", "member"])
   const documents = await DocumentModel.find({ organizationId: org._id }).sort({ createdAt: -1 }).lean()
   const sources: DocumentItem[] = documents.map((document) => ({
@@ -36,10 +37,10 @@ export const POST = withApi(async (request) => {
     const organizationId = String(form.get("organizationId") ?? "")
     const uploaded = form.get("file")
     const titleInput = String(form.get("title") ?? "").trim()
-    if (!(uploaded instanceof File)) throw new UserInputError("Choose a file to upload.")
+    if (!(uploaded instanceof File)) throw new UserInputError("Choose a file to upload.", "FILE_REQUIRED")
     const { user, org } = await requireOrgAccess(organizationId, ["admin", "manager"])
     const text = await extractUploadText(uploaded)
-    if (!text) throw new UserInputError("No readable text was found in that file.")
+    if (!text) throw new UserInputError("No readable text was found in that file.", "FILE_UNREADABLE")
     const doc = await createIndexedSource({
       orgId: org._id.toString(),
       userId: user.id,
@@ -52,6 +53,21 @@ export const POST = withApi(async (request) => {
 
   const input = jsonSourceSchema.parse(await readJson(request))
   const { user, org } = await requireOrgAccess(input.organizationId, ["admin", "manager"])
+
+  if (input.type === "file") {
+    const shared = await downloadSharedFile(input.url)
+    const text = await extractFileBytes(shared.buffer, shared.name, shared.type, "link")
+    if (!text) throw new UserInputError("No readable text was found in that file.", "FILE_UNREADABLE")
+    const doc = await createIndexedSource({
+      orgId: org._id.toString(),
+      userId: user.id,
+      type: "file",
+      title: (input.title?.trim() || titleFromFilename(shared.name)).slice(0, 120),
+      text,
+      url: shared.sourceUrl,
+    })
+    return NextResponse.json({ id: doc._id.toString(), status: doc.status }, { status: 201 })
+  }
 
   if (input.type === "text") {
     const doc = await createIndexedSource({

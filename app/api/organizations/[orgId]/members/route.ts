@@ -34,7 +34,7 @@ export const DELETE = withApi<Context>(async (request, context) => {
   const { orgId } = await context.params
   const { org } = await requireOrgAccess(orgId, ["admin"])
   const userId = new URL(request.url).searchParams.get("userId")
-  if (!userId) throw new UserInputError("Choose a member to remove.")
+  if (!userId) throw new UserInputError("Choose a member to remove.", "MEMBER_REQUIRED")
   await removeOrganizationMember(org._id, userId)
   return NextResponse.json({ ok: true })
 })

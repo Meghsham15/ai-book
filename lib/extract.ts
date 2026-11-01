@@ -1,93 +1,47 @@
 import "server-only"
 
-import { load } from "cheerio"
 import { extractText, getDocumentProxy, renderPageAsImage } from "unpdf"
 import { fileTooLargeMessage, MAX_SOURCE_CHARS, MAX_UPLOAD_BYTES } from "@/lib/constants"
 import { UpstreamError, UserInputError } from "@/lib/errors"
 
-export async function extractUploadText(file: File) {
-  if (file.size <= 0) throw new UserInputError("That file is empty.")
-  if (file.size > MAX_UPLOAD_BYTES) throw new UserInputError(fileTooLargeMessage())
+export { assertPublicHttpUrl, extractWebsiteText } from "@/lib/website-text"
 
-  const name = file.name.toLowerCase()
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const isPdf = name.endsWith(".pdf") || file.type === "application/pdf"
+export async function extractUploadText(file: File) {
+  if (file.size <= 0) throw new UserInputError("That file is empty.", "FILE_EMPTY")
+  if (file.size > MAX_UPLOAD_BYTES) throw new UserInputError(fileTooLargeMessage(), "FILE_TOO_LARGE")
+  return extractFileBytes(Buffer.from(await file.arrayBuffer()), file.name, file.type, "upload")
+}
+
+export async function extractFileBytes(
+  buffer: Buffer,
+  name: string,
+  contentType: string,
+  source: "upload" | "link" = "upload",
+) {
+  if (buffer.length <= 0) throw new UserInputError("That file is empty.", "FILE_EMPTY")
+  if (buffer.length > MAX_UPLOAD_BYTES) throw new UserInputError(fileTooLargeMessage(), "FILE_TOO_LARGE")
+
+  const lower = name.toLowerCase()
+  const type = contentType.toLowerCase()
+  const isPdf = lower.endsWith(".pdf") || type.includes("pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-"
   const isText =
-    name.endsWith(".txt") ||
-    name.endsWith(".md") ||
-    name.endsWith(".markdown") ||
-    file.type.startsWith("text/")
+    lower.endsWith(".txt") ||
+    lower.endsWith(".md") ||
+    lower.endsWith(".markdown") ||
+    lower.endsWith(".csv") ||
+    type.startsWith("text/")
 
   if (isPdf) return extractPdfText(buffer)
-
-  if (isText) return cleanupText(buffer.toString("utf8"))
-  throw new UserInputError("Upload a PDF, TXT, or Markdown file.")
-}
-
-export function assertPublicHttpUrl(raw: string) {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new UserInputError("Enter a valid website URL.")
+  if (isText) return cleanupText(buffer.toString("utf8").replace(/^\uFEFF/, ""))
+  if (source === "link" && (lower.endsWith(".zip") || type.includes("zip"))) {
+    throw new UserInputError("That link is a folder or archive. Share one PDF or text file.", "SHARED_LINK_ARCHIVE")
   }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new UserInputError("Only http and https links can be imported.")
-  }
-
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "")
-  if (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    isPrivateIp(host)
-  ) {
-    throw new UserInputError("That address can't be imported.")
-  }
-
-  return url.toString()
-}
-
-export async function extractWebsiteText(raw: string) {
-  let current = assertPublicHttpUrl(raw)
-  let response: Response | null = null
-
-  for (let hop = 0; hop < 4; hop += 1) {
-    response = await fetch(current, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        "User-Agent": "AIBookBot/1.0",
-        Accept: "text/html,text/plain;q=0.9,*/*;q=0.8",
-      },
-    })
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location")
-      if (!location) throw new UserInputError("That page redirected without a destination.")
-      current = assertPublicHttpUrl(new URL(location, current).toString())
-      continue
-    }
-    break
-  }
-
-  if (!response || !response.ok) {
-    throw new UserInputError("That page could not be fetched.")
-  }
-
-  const contentType = response.headers.get("content-type") ?? ""
-  if (contentType.includes("pdf")) {
-    throw new UserInputError("That link is a PDF. Upload the file instead.")
-  }
-
-  const html = (await response.text()).slice(0, 1_500_000)
-  const text = cleanupText(htmlToText(html))
-  if (!text) throw new UserInputError("That page didn't include any readable text.")
-  return { url: current, text }
+  throw new UserInputError(
+    source === "link"
+      ? "That shared file needs to be a PDF or a text file. Google Docs, Sheets, and Slides are read when anyone with the link can open them."
+      : "Upload a PDF, TXT, or Markdown file.",
+    source === "link" ? "SHARED_FILE_TYPE" : "FILE_TYPE_UNSUPPORTED",
+  )
 }
 
 const MIN_PAGE_LETTERS = 40
@@ -139,6 +93,7 @@ async function extractPdfText(buffer: Buffer) {
       pictured.length > 0
         ? "This PDF's pages are pictures, and they could not be read. Check NVIDIA_API_KEY and try again."
         : "No readable text was found in that PDF.",
+      pictured.length > 0 ? "PDF_PICTURES_UNREADABLE" : "PDF_UNREADABLE",
     )
   }
   if (failed > 0) {
@@ -158,7 +113,7 @@ async function pngToJpeg(png: ArrayBuffer) {
 async function transcribePage(jpeg: Buffer) {
   const apiKey = process.env.NVIDIA_API_KEY?.trim()
   if (!apiKey || apiKey.startsWith("replace-me")) {
-    throw new UserInputError("This PDF's pages are pictures. Add NVIDIA_API_KEY so those pages can be read.")
+    throw new UserInputError("This PDF's pages are pictures. Add NVIDIA_API_KEY so those pages can be read.", "PDF_VISION_KEY_MISSING")
   }
 
   const base = (process.env.NVIDIA_BASE_URL || NVIDIA_BASE_URL).replace(/\/$/, "")
@@ -202,7 +157,7 @@ async function transcribePage(jpeg: Buffer) {
   }
 
   if (!response?.ok) {
-    throw new UpstreamError("A pictured PDF page could not be read. Check NVIDIA_API_KEY and try again.")
+    throw new UpstreamError("A pictured PDF page could not be read. Check NVIDIA_API_KEY and try again.", "PDF_VISION_FAILED")
   }
 
   const payload = (await response.json()) as {
@@ -236,12 +191,6 @@ async function mapPool<T>(items: T[], limit: number, worker: (item: T) => Promis
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()))
 }
 
-function htmlToText(html: string) {
-  const $ = load(html)
-  $("script, style, noscript, svg, iframe, canvas, nav, footer").remove()
-  return $("article").text() || $("main").text() || $("body").text() || $.root().text()
-}
-
 function cleanupText(text: string) {
   return text
     .replace(/\u0000/g, " ")
@@ -250,17 +199,4 @@ function cleanupText(text: string) {
     .replace(/[ \t]{2,}/g, " ")
     .trim()
     .slice(0, MAX_SOURCE_CHARS)
-}
-
-function isPrivateIp(host: string) {
-  if (host === "::1" || host === "0:0:0:0:0:0:0:1") return true
-  const mapped = host.startsWith("::ffff:") ? host.slice(7) : host
-  if (/^127\./.test(mapped)) return true
-  if (/^10\./.test(mapped)) return true
-  if (/^192\.168\./.test(mapped)) return true
-  if (/^169\.254\./.test(mapped)) return true
-  const match = /^172\.(\d+)\./.exec(mapped)
-  if (!match) return false
-  const second = Number(match[1])
-  return second >= 16 && second <= 31
 }

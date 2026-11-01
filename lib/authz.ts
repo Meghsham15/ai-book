@@ -14,7 +14,7 @@ export async function getUserMembership(userId: string, orgId: string) {
 
 export function assertObjectId(id: string, label = "Record") {
   if (!mongoose.isValidObjectId(id)) {
-    throw new AuthzError(`${label} not found.`, 404)
+    throw new AuthzError(`${label} not found.`, 404, "LIBRARY_NOT_FOUND")
   }
   return new mongoose.Types.ObjectId(id)
 }

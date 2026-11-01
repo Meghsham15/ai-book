@@ -3,7 +3,7 @@ import "server-only"
 import { randomBytes } from "node:crypto"
 import mongoose from "mongoose"
 import { emailError, normalizeEmail } from "@/lib/email-address"
-import { AppError, AuthzError, UserInputError } from "@/lib/errors"
+import { AppError, AuthzError, UserInputError, formatApiError } from "@/lib/errors"
 import { sendInvitationEmail } from "@/lib/mail"
 import { Invitation } from "@/lib/models/invitation"
 import { Membership } from "@/lib/models/membership"
@@ -39,12 +39,12 @@ export async function inviteToOrganization(input: {
 }) {
   const email = normalizeEmail(input.email)
   const invalid = emailError(email)
-  if (invalid) throw new UserInputError(invalid)
+  if (invalid) throw new UserInputError(invalid, "EMAIL_INVALID")
 
   const existingUser = await User.findOne({ email })
   if (existingUser) {
     const membership = await Membership.exists({ organizationId: input.orgId, userId: existingUser._id })
-    if (membership) throw new UserInputError("That person is already in this library.")
+    if (membership) throw new UserInputError("That person is already in this library.", "ALREADY_MEMBER")
   }
 
   const token = randomBytes(32).toString("hex")
@@ -57,7 +57,7 @@ export async function inviteToOrganization(input: {
     expiresAt: { $gt: new Date() },
   })
   if (transferPending) {
-    throw new UserInputError("That email already has a pending ownership transfer. Cancel it before sending a member invitation.")
+    throw new UserInputError("That email already has a pending ownership transfer. Cancel it before sending a member invitation.", "TRANSFER_PENDING")
   }
 
   const pending = await Invitation.findOne({
@@ -99,8 +99,8 @@ export async function inviteToOrganization(input: {
   } catch (error) {
     const warning =
       error instanceof AppError
-        ? error.message
-        : "The invitation was saved, but the email could not be sent."
+        ? formatApiError(error)
+        : "The invitation was saved, but the email could not be sent. [INVITE_EMAIL_FAILED]"
     return { emailed: false, resent: Boolean(pending), warning }
   }
 }
@@ -113,17 +113,17 @@ export async function requestOwnershipTransfer(input: {
 }) {
   const email = normalizeEmail(input.email)
   const invalid = emailError(email)
-  if (invalid) throw new UserInputError(invalid)
+  if (invalid) throw new UserInputError(invalid, "EMAIL_INVALID")
 
   const org = await Organization.findById(input.orgId).select("ownerId")
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   if (String(org.ownerId) !== input.invitedBy) {
-    throw new AuthzError("Only the owner can transfer this library.", 403)
+    throw new AuthzError("Only the owner can transfer this library.", 403, "OWNER_REQUIRED")
   }
 
   const owner = await User.findById(org.ownerId).select("email")
   if (owner?.email && normalizeEmail(owner.email) === email) {
-    throw new UserInputError("You already own this library.")
+    throw new UserInputError("You already own this library.", "ALREADY_OWNER")
   }
 
   await Invitation.updateMany(
@@ -178,8 +178,8 @@ export async function requestOwnershipTransfer(input: {
   } catch (error) {
     const warning =
       error instanceof AppError
-        ? error.message
-        : "The ownership request was saved, but the email could not be sent."
+        ? formatApiError(error)
+        : "The ownership request was saved, but the email could not be sent. [INVITE_EMAIL_FAILED]"
     return { emailed: false, resent: Boolean(pending), warning }
   }
 }
@@ -189,7 +189,7 @@ export async function acceptInvitation(token: string, user: SessionUser) {
   if (invite.kind === "transfer") {
     const current = await Organization.findById(invite.organizationId).select("ownerId")
     if (!current || String(current.ownerId) !== String(invite.invitedBy)) {
-      throw new UserInputError("This ownership request is no longer active.")
+      throw new UserInputError("This ownership request is no longer active.", "TRANSFER_INACTIVE")
     }
   }
   const existing = await Membership.findOne({ organizationId: invite.organizationId, userId: user.id })
@@ -217,12 +217,12 @@ export async function declineInvitation(token: string, user: SessionUser) {
 }
 
 export async function revokeInvitation(orgId: mongoose.Types.ObjectId, invitationId: string) {
-  if (!mongoose.isValidObjectId(invitationId)) throw new UserInputError("Choose an invitation to cancel.")
+  if (!mongoose.isValidObjectId(invitationId)) throw new UserInputError("Choose an invitation to cancel.", "INVITE_ID_INVALID")
   const result = await Invitation.updateOne(
     { _id: invitationId, organizationId: orgId, status: "pending" },
     { $set: { status: "revoked" } },
   )
-  if (result.matchedCount === 0) throw new AuthzError("That invitation is no longer pending.", 404)
+  if (result.matchedCount === 0) throw new AuthzError("That invitation is no longer pending.", 404, "INVITE_NOT_PENDING")
 }
 
 export async function listPendingInvites(orgId: mongoose.Types.ObjectId): Promise<PendingInvite[]> {
@@ -288,11 +288,11 @@ export async function describeInvitation(token: string) {
 }
 
 async function loadOpenInvitation(token: string, email: string) {
-  if (!/^[a-f0-9]{64}$/.test(token)) throw new UserInputError("This invitation link is not valid.")
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new UserInputError("This invitation link is not valid.", "INVITE_TOKEN_INVALID")
   const invite = await Invitation.findOne({ token })
-  if (!invite || !isPending(invite)) throw new UserInputError("This invitation is no longer active.")
+  if (!invite || !isPending(invite)) throw new UserInputError("This invitation is no longer active.", "INVITE_INACTIVE")
   if (!email || invite.email !== normalizeEmail(email)) {
-    throw new AuthzError("Sign in with the Google account this invitation was sent to.", 403)
+    throw new AuthzError("Sign in with the Google account this invitation was sent to.", 403, "INVITE_EMAIL_MISMATCH")
   }
   return invite
 }

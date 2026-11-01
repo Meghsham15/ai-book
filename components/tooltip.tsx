@@ -8,10 +8,12 @@ export function Tooltip({
   label,
   children,
   className,
+  wide = false,
 }: {
   label: string
   children: ReactNode
   className?: string
+  wide?: boolean
 }) {
   const anchorRef = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
@@ -54,7 +56,10 @@ export function Tooltip({
         ? createPortal(
             <span
               role="tooltip"
-              className="pointer-events-none fixed z-40 max-w-64 rounded-none border border-line bg-card px-2 py-1 text-left text-xs leading-5 text-foreground shadow-[0_8px_24px_rgba(28,25,23,0.12)]"
+              className={cn(
+                "pointer-events-none fixed z-[80] rounded-none border border-line bg-card px-2 py-1 text-left text-xs leading-5 text-foreground shadow-[0_8px_24px_rgba(28,25,23,0.12)]",
+                wide ? "max-w-80" : "max-w-64",
+              )}
               style={{ top: box.top, left: box.left, transform: `translate(-50%, ${box.above ? "-100%" : "0"})` }}
             >
               {label}

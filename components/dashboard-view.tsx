@@ -51,9 +51,9 @@ export function DashboardView({
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="rise font-display text-4xl leading-none sm:text-5xl">Hello, {user.name.split(" ")[0] || "there"}</h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
-              Each library keeps its own sources, members, and chat. Creating one makes you the admin.
+            <h1 className="text-3xl font-medium tracking-tight sm:text-4xl">Libraries</h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
+              Each library keeps its own sources, members, and chat.
             </p>
           </div>
           <p className="text-sm text-muted">
@@ -61,37 +61,41 @@ export function DashboardView({
           </p>
         </div>
         {libraries.length === 0 ? (
-          <div className="border-y border-line py-16">
-            <p className="font-display text-4xl">No libraries yet</p>
-            <p className="mt-3 max-w-md text-sm leading-6 text-muted">
+          <div className="rounded-3xl border border-dashed border-line bg-card px-6 py-14">
+            <p className="text-2xl font-medium">No libraries yet</p>
+            <p className="mt-2 max-w-md text-sm leading-6 text-muted">
               Create one below, then invite teammates by email. They can join even if they have never signed in.
             </p>
           </div>
         ) : (
-          <ul className="border-y border-line">
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {libraries.map((library) => {
               const sources = library.usage.files + library.usage.websites + library.usage.texts
               return (
-                <li key={library.id} className="border-b border-line last:border-b-0">
-                  <Link href={`/org/${library.slug}`} className="page-link grid gap-2 py-5 pl-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <li key={library.id}>
+                  <Link href={`/org/${library.slug}`} className="flex h-full flex-col justify-between rounded-3xl border border-line bg-card px-5 py-5 hover:border-accent">
                     <div>
-                      <h2 className="break-words font-display text-3xl leading-none">{library.name}</h2>
+                      <h2 className="break-words text-xl font-medium leading-tight">{library.name}</h2>
                       <p className="mt-2 text-sm text-muted">
-                        {sources} {sources === 1 ? "source" : "sources"}, {library.queries}{" "}
-                        {library.queries === 1 ? "question" : "questions"}
+                        {sources} {sources === 1 ? "source" : "sources"}
                       </p>
                     </div>
-                    <Tooltip
-                      label={
-                        library.role === "admin"
-                          ? "You can manage this library"
-                          : library.role === "manager"
-                            ? "You can add and remove sources"
-                            : "You can ask questions"
-                      }
-                    >
-                      <span className="text-sm text-accent">{roleLabel(library.role)}</span>
-                    </Tooltip>
+                    <div className="mt-6 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted">
+                        {library.queries} {library.queries === 1 ? "question" : "questions"}
+                      </span>
+                      <Tooltip
+                        label={
+                          library.role === "admin"
+                            ? "You can manage this library"
+                            : library.role === "manager"
+                              ? "You can add and remove sources"
+                              : "You can ask questions"
+                        }
+                      >
+                        <span className="text-accent">{roleLabel(library.role)}</span>
+                      </Tooltip>
+                    </div>
                   </Link>
                 </li>
               )
@@ -112,12 +116,12 @@ export function DashboardView({
               minLength={2}
               maxLength={60}
               required
-              className="h-12 flex-1 border border-line bg-card px-4 text-sm outline-none transition focus:border-accent"
+              className="h-12 flex-1 rounded-full border border-line bg-card px-4 text-sm outline-none focus:border-accent"
             />
             <button
               type="submit"
               disabled={pending || Boolean(configError)}
-              className="inline-flex h-12 items-center justify-center gap-2 bg-accent px-5 text-sm font-semibold text-accent-foreground transition hover:-translate-y-0.5 hover:bg-ink hover:text-on-ink disabled:translate-y-0 disabled:opacity-60"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-ink px-5 text-sm font-medium text-on-ink hover:bg-accent hover:text-accent-foreground disabled:opacity-60"
             >
               {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" />}
               {pending ? "Creating…" : "Create library"}

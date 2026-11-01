@@ -18,6 +18,7 @@ const chatTurnSchema = new Schema(
     role: { type: String, enum: ["user", "assistant"], required: true },
     content: { type: String, required: true },
     sources: { type: [sourceSchema], default: undefined },
+    chatId: { type: Schema.Types.ObjectId, ref: "Conversation" },
     authorId: { type: Schema.Types.ObjectId, ref: "User" },
     authorName: { type: String, default: "" },
   },
@@ -25,6 +26,7 @@ const chatTurnSchema = new Schema(
 )
 
 chatTurnSchema.index({ organizationId: 1, createdAt: 1 })
+chatTurnSchema.index({ chatId: 1, createdAt: 1 })
 
 export type ChatTurnDocument = InferSchemaType<typeof chatTurnSchema> & {
   _id: mongoose.Types.ObjectId

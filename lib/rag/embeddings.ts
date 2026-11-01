@@ -93,58 +93,93 @@ async function detectProvider(): Promise<EmbeddingProvider> {
 async function embedWithNvidia(texts: string[], inputType: EmbeddingInputType) {
   const apiKey = process.env.NVIDIA_API_KEY?.trim()
   if (!apiKey || apiKey.startsWith("replace-me")) {
-    throw new UpstreamError("Add NVIDIA_API_KEY before using NVIDIA embeddings.")
+    throw new UpstreamError("Add NVIDIA_API_KEY before using NVIDIA embeddings.", "NVIDIA_EMBED_KEY_MISSING")
   }
 
   const model = process.env.NVIDIA_EMBEDDING_MODEL || NVIDIA_EMBEDDING_MODEL
   const base = (process.env.NVIDIA_BASE_URL || NVIDIA_BASE_URL).replace(/\/$/, "")
   const dimensions = nvidiaEmbeddingDimensions()
-  const vectors = new Array<number[]>(texts.length)
+  const vectors: number[][] = []
 
   for (let start = 0; start < texts.length; start += NVIDIA_EMBED_BATCH) {
-    const batch = texts.slice(start, start + NVIDIA_EMBED_BATCH)
-    const response = await fetch(`${base}/embeddings`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        input: batch,
-        input_type: inputType,
-        encoding_format: "float",
-        truncate: "END",
-        embedding_type: "float",
-        dimensions,
-      }),
+    const batch = await embedNvidiaBatch(texts.slice(start, start + NVIDIA_EMBED_BATCH), {
+      apiKey,
+      model,
+      base,
+      dimensions,
+      inputType,
     })
-
-    if (!response.ok) {
-      console.error("NVIDIA embedding request failed", response.status)
-      throw new UpstreamError("NVIDIA embeddings could not be created. Check NVIDIA_API_KEY and NVIDIA_EMBEDDING_MODEL.")
-    }
-
-    const payload = (await response.json()) as {
-      data?: { index?: number; embedding?: number[] }[]
-    }
-    const rows = payload.data ?? []
-    if (rows.length !== batch.length) {
-      throw new UpstreamError("NVIDIA returned an unexpected embedding batch.")
-    }
-
-    rows.forEach((row, fallbackIndex) => {
-      const index = typeof row.index === "number" ? row.index : fallbackIndex
-      if (!row.embedding?.length) {
-        throw new UpstreamError("NVIDIA returned an empty embedding.")
-      }
-      vectors[start + index] = normalize(row.embedding)
-    })
+    vectors.push(...batch)
   }
 
   if (vectors.some((vector) => !vector?.length)) {
-    throw new UpstreamError("NVIDIA returned an empty embedding.")
+    throw new UpstreamError("NVIDIA returned an empty embedding.", "NVIDIA_EMBED_EMPTY")
+  }
+  return vectors
+}
+
+async function embedNvidiaBatch(
+  batch: string[],
+  options: {
+    apiKey: string
+    model: string
+    base: string
+    dimensions: number
+    inputType: EmbeddingInputType
+  },
+): Promise<number[][]> {
+  const response = await fetch(`${options.base}/embeddings`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      model: options.model,
+      input: batch,
+      input_type: options.inputType,
+      encoding_format: "float",
+      truncate: "END",
+      embedding_type: "float",
+      dimensions: options.dimensions,
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300)
+    console.error("NVIDIA embedding request failed", response.status, detail)
+    if (response.status >= 500 && batch.length > 1) {
+      const vectors: number[][] = []
+      for (const text of batch) vectors.push(...(await embedNvidiaBatch([text], options)))
+      return vectors
+    }
+    throw new UpstreamError(
+      response.status === 401 || response.status === 403
+        ? "NVIDIA embeddings could not be created. Check NVIDIA_API_KEY and NVIDIA_EMBEDDING_MODEL."
+        : "NVIDIA could not embed this source. Try adding it again in a moment.",
+      response.status === 401 || response.status === 403 ? "NVIDIA_EMBED_AUTH" : "NVIDIA_EMBED_FAILED",
+    )
+  }
+
+  const payload = (await response.json()) as {
+    data?: { index?: number; embedding?: number[] }[]
+  }
+  const rows = payload.data ?? []
+  if (rows.length !== batch.length) {
+    throw new UpstreamError("NVIDIA returned an unexpected embedding batch.", "NVIDIA_EMBED_BATCH")
+  }
+
+  const vectors = new Array<number[]>(batch.length)
+  rows.forEach((row, fallbackIndex) => {
+    const index = typeof row.index === "number" ? row.index : fallbackIndex
+    if (!row.embedding?.length) {
+      throw new UpstreamError("NVIDIA returned an empty embedding.", "NVIDIA_EMBED_EMPTY")
+    }
+    vectors[index] = normalize(row.embedding)
+  })
+  if (vectors.some((vector) => !vector?.length)) {
+    throw new UpstreamError("NVIDIA returned an empty embedding.", "NVIDIA_EMBED_EMPTY")
   }
   return vectors
 }
@@ -152,7 +187,7 @@ async function embedWithNvidia(texts: string[], inputType: EmbeddingInputType) {
 async function embedWithGroq(texts: string[]) {
   const apiKey = process.env.GROQ_API_KEY?.trim()
   if (!apiKey || apiKey.startsWith("replace-me")) {
-    throw new UpstreamError("Add GROQ_API_KEY before using Groq embeddings.")
+    throw new UpstreamError("Add GROQ_API_KEY before using Groq embeddings.", "GROQ_EMBED_KEY_MISSING")
   }
 
   const embeddings = new OpenAIEmbeddings({
@@ -168,13 +203,13 @@ async function embedWithGroq(texts: string[]) {
   try {
     const vectors = await embeddings.embedDocuments(texts)
     if (vectors.some((vector) => vector.length === 0)) {
-      throw new UpstreamError("Groq returned an empty embedding.")
+      throw new UpstreamError("Groq returned an empty embedding.", "GROQ_EMBED_EMPTY")
     }
     return vectors.map((vector) => normalize(vector))
   } catch (error) {
     if (error instanceof UpstreamError) throw error
     console.error("Groq embedding request failed", error instanceof Error ? error.message : "unknown error")
-    throw new UpstreamError("Groq embeddings could not be created. Check GROQ_API_KEY and GROQ_EMBEDDING_MODEL.")
+    throw new UpstreamError("Groq embeddings could not be created. Check GROQ_API_KEY and GROQ_EMBEDDING_MODEL.", "GROQ_EMBED_FAILED")
   }
 }
 
@@ -200,7 +235,7 @@ function localEmbed(text: string) {
 
 async function embedWithXai(texts: string[]) {
   const apiKey = process.env.XAI_API_KEY
-  if (!apiKey) throw new UpstreamError("Add XAI_API_KEY before using xAI embeddings.")
+  if (!apiKey) throw new UpstreamError("Add XAI_API_KEY before using xAI embeddings.", "XAI_EMBED_KEY_MISSING")
 
   const embeddings = new OpenAIEmbeddings({
     apiKey,
@@ -217,14 +252,14 @@ async function embedWithXai(texts: string[]) {
     return vectors.map((vector) => normalize(vector))
   } catch (error) {
     console.error("xAI embedding request failed", error instanceof Error ? error.message : "unknown error")
-    throw new UpstreamError("xAI embeddings could not be created. Check XAI_EMBEDDING_MODEL or switch EMBEDDING_PROVIDER.")
+    throw new UpstreamError("xAI embeddings could not be created. Check XAI_EMBEDDING_MODEL or switch EMBEDDING_PROVIDER.", "XAI_EMBED_FAILED")
   }
 }
 
 async function embedWithGemini(texts: string[]) {
   const apiKey = process.env.GEMINI_API_KEY?.trim()
   if (!apiKey || apiKey.startsWith("replace-me")) {
-    throw new UpstreamError("Add GEMINI_API_KEY before using Gemini embeddings.")
+    throw new UpstreamError("Add GEMINI_API_KEY before using Gemini embeddings.", "GEMINI_EMBED_KEY_MISSING")
   }
   const model = process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-2"
   return mapPool(texts, 4, async (text) => {
@@ -242,12 +277,12 @@ async function embedWithGemini(texts: string[]) {
 
     if (!response.ok) {
       console.error("Gemini embedding request failed", response.status)
-      throw new UpstreamError("Gemini embeddings could not be created. Check GEMINI_API_KEY and GEMINI_EMBEDDING_MODEL.")
+      throw new UpstreamError("Gemini embeddings could not be created. Check GEMINI_API_KEY and GEMINI_EMBEDDING_MODEL.", "GEMINI_EMBED_FAILED")
     }
 
     const payload = (await response.json()) as { embedding?: { values?: number[] } }
     if (!payload.embedding?.values?.length) {
-      throw new UpstreamError("Gemini returned an empty embedding.")
+      throw new UpstreamError("Gemini returned an empty embedding.", "GEMINI_EMBED_EMPTY")
     }
     return normalize(payload.embedding.values)
   })

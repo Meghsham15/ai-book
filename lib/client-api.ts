@@ -1,13 +1,20 @@
 import type { ChatStreamEvent } from "@/lib/chat-stream"
 
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (response.status === 401) {
-    throw new Error("Sign in to continue.")
-  }
+type ErrorPayload = { error?: string; code?: string } | null
 
-  const payload = (await response.json().catch(() => null)) as { error?: string } | null
+function messageWithCode(payload: ErrorPayload, fallback: string, fallbackCode = "") {
+  const message = payload?.error || fallback
+  const code = payload?.code || fallbackCode
+  return code ? `${message} [${code}]` : message
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json().catch(() => null)) as ErrorPayload
+  if (response.status === 401) {
+    throw new Error(messageWithCode(payload, "Sign in to continue.", "AUTH_REQUIRED"))
+  }
   if (!response.ok) {
-    throw new Error(payload?.error || "Something went wrong. Please try again.")
+    throw new Error(messageWithCode(payload, "Something went wrong. Please try again.", "INTERNAL"))
   }
   return payload as T
 }
@@ -55,20 +62,19 @@ export async function readChatStream(
     body: JSON.stringify(body),
   })
 
-  if (response.status === 401) {
-    throw new Error("Sign in to continue.")
-  }
-
   const contentType = response.headers.get("content-type") ?? ""
-  if (!response.ok || contentType.includes("application/json")) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null
+  if (response.status === 401 || !response.ok || contentType.includes("application/json")) {
+    const payload = (await response.json().catch(() => null)) as ErrorPayload
+    if (response.status === 401) {
+      throw new Error(messageWithCode(payload, "Sign in to continue.", "AUTH_REQUIRED"))
+    }
     if (!response.ok) {
-      throw new Error(payload?.error || "Something went wrong. Please try again.")
+      throw new Error(messageWithCode(payload, "Something went wrong. Please try again.", "INTERNAL"))
     }
   }
 
   if (!response.body) {
-    throw new Error("The answer could not be streamed.")
+    throw new Error("The answer could not be streamed. [STREAM_FAILED]")
   }
 
   const reader = response.body.getReader()
@@ -102,10 +108,11 @@ function emitChatEvent(part: string, onEvent: (event: ChatStreamEvent) => void) 
   try {
     event = JSON.parse(payload) as ChatStreamEvent
   } catch {
-    throw new Error("The answer could not be streamed.")
+    throw new Error("The answer could not be streamed. [STREAM_FAILED]")
   }
   if (event.type === "error") {
-    throw new Error(event.error || "The question could not be answered.")
+    const message = event.error || "The question could not be answered."
+    throw new Error(event.code ? `${message} [${event.code}]` : message)
   }
   onEvent(event)
 }

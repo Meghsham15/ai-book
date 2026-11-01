@@ -42,12 +42,12 @@ export function SettingsView({
           </Link>
         </div>
         <div>
-          <h1 className="break-words font-display text-4xl leading-none sm:text-5xl">{org.name}</h1>
+          <h1 className="break-words text-3xl font-medium tracking-tight">{org.name}</h1>
           <p className="mt-2 text-sm text-muted">You are {roleLabel(org.role).toLowerCase()} here{org.isOwner ? " and the owner" : ""}.</p>
         </div>
 
         <section className="border border-line bg-card p-5">
-          <h2 className="font-display text-3xl">Appearance</h2>
+          <h2 className="text-xl font-medium">Appearance</h2>
           <p className="mt-2 text-sm leading-6 text-muted">Light or dark. This stays on this browser.</p>
           <div className="mt-4">
             <ThemeToggle />
@@ -84,7 +84,7 @@ function RenameForm({ org }: { org: OrgDetails }) {
 
   return (
     <form onSubmit={onSubmit} className="border border-line bg-card p-5">
-      <h2 className="font-display text-3xl">Library name</h2>
+      <h2 className="text-xl font-medium">Library name</h2>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <input
           value={name}
@@ -157,7 +157,7 @@ function MembersCard({
 
   return (
     <section className="border border-line bg-card p-5">
-      <h2 className="font-display text-3xl">People</h2>
+      <h2 className="text-xl font-medium">People</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         Admins invite people by email. Someone who already uses AI Book also sees the invitation on their dashboard. A new person opens the link and signs in with that same Google account.
       </p>
@@ -383,7 +383,7 @@ function DeleteLibrary({ org }: { org: OrgDetails }) {
 
   return (
     <form onSubmit={onSubmit} className="border border-danger/30 bg-card p-5">
-      <h2 className="font-display text-3xl">Delete library</h2>
+      <h2 className="text-xl font-medium">Delete library</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         This removes {org.name} for everyone connected to it. Files, websites, notes, search chunks, chat, members, and pending invitations are deleted with it.
       </p>

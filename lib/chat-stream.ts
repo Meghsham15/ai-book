@@ -4,4 +4,4 @@ export type ChatStreamEvent =
   | { type: "sources"; sources: ChatSource[] }
   | { type: "delta"; text: string }
   | { type: "done" }
-  | { type: "error"; error: string }
+  | { type: "error"; error: string; code?: string }

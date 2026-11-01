@@ -10,7 +10,7 @@ const NVIDIA_CHAT_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 export function assertNvidiaConfigured() {
   const apiKey = process.env.NVIDIA_API_KEY?.trim()
   if (!apiKey || apiKey.startsWith("replace-me")) {
-    throw new ConfigError("Add NVIDIA_API_KEY to .env.local before asking questions.")
+    throw new ConfigError("Add NVIDIA_API_KEY to .env.local before asking questions.", "NVIDIA_CHAT_KEY_MISSING")
   }
   return apiKey
 }
@@ -82,12 +82,12 @@ function mapNvidiaError(error: unknown) {
   const status = readStatus(error)
   console.error("NVIDIA request failed", error instanceof Error ? error.message : "unknown error")
   if (status === 429) {
-    return new RateLimitError("The model is busy right now. Wait a moment and try again.")
+    return new RateLimitError("The model is busy right now. Wait a moment and try again.", "MODEL_BUSY")
   }
   if (status === 401 || status === 403) {
-    return new ConfigError("The NVIDIA API key is invalid or expired.")
+    return new ConfigError("The NVIDIA API key is invalid or expired.", "NVIDIA_CHAT_KEY_INVALID")
   }
-  return new UpstreamError("NVIDIA could not answer right now. Check NVIDIA_API_KEY and NVIDIA_CHAT_MODEL, then try again.")
+  return new UpstreamError("NVIDIA could not answer right now. Check NVIDIA_API_KEY and NVIDIA_CHAT_MODEL, then try again.", "NVIDIA_CHAT_FAILED")
 }
 
 function readStatus(error: unknown) {

@@ -13,13 +13,14 @@ export async function requireOrgAccess(orgId: string, allowed: readonly Role[]) 
   await connectDB()
   const organizationId = assertObjectId(orgId, "Organization")
   const org = await Organization.findById(organizationId)
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
 
   const membership = await Membership.findOne({ userId: user.id, organizationId: org._id })
   if (!membership || !allowed.includes(membership.role as Role)) {
     throw new AuthzError(
       membership ? "You don't have permission for that." : "You don't have access to this library.",
       403,
+      membership ? "ROLE_FORBIDDEN" : "LIBRARY_FORBIDDEN",
     )
   }
 

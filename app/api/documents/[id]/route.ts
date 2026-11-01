@@ -15,7 +15,7 @@ export const GET = withApi<Context>(async (_request, context) => {
   const { id } = await context.params
   await connectDB()
   const doc = await DocumentModel.findById(id)
-  if (!doc) throw new AuthzError("Source not found.", 404)
+  if (!doc) throw new AuthzError("Source not found.", 404, "SOURCE_NOT_FOUND")
   await requireOrgAccess(doc.organizationId.toString(), ["admin", "manager", "member"])
   return NextResponse.json({
     id: doc._id.toString(),
@@ -31,7 +31,7 @@ export const PATCH = withApi<Context>(async (request, context) => {
   const { id } = await context.params
   await connectDB()
   const existing = await DocumentModel.findById(id)
-  if (!existing) throw new AuthzError("Source not found.", 404)
+  if (!existing) throw new AuthzError("Source not found.", 404, "SOURCE_NOT_FOUND")
   await requireOrgAccess(existing.organizationId.toString(), ["admin", "manager"])
   const input = updateDocumentSchema.parse(await readJson(request))
   const doc = await updateIndexedSource(existing.organizationId.toString(), id, input)
@@ -42,7 +42,7 @@ export const DELETE = withApi<Context>(async (_request, context) => {
   const { id } = await context.params
   await connectDB()
   const existing = await DocumentModel.findById(id)
-  if (!existing) throw new AuthzError("Source not found.", 404)
+  if (!existing) throw new AuthzError("Source not found.", 404, "SOURCE_NOT_FOUND")
   await requireOrgAccess(existing.organizationId.toString(), ["admin", "manager"])
   await deleteIndexedSource(existing.organizationId.toString(), id)
   return NextResponse.json({ ok: true })

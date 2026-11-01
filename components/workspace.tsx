@@ -3,25 +3,31 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, Copy, FileText, Globe, Loader2, NotebookPen, RefreshCw, Send, Settings, Trash2 } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Copy, FileText, Globe, Loader2, Menu, MessageSquare, NotebookPen, PanelRight, Plus, RefreshCw, Send, Settings, Trash2, X } from "lucide-react"
+import { AddSourceDialog } from "@/components/add-source-dialog"
 import { MarkdownMessage } from "@/components/markdown-message"
 import { StudioBar, studioPlaceholder } from "@/components/studio-bar"
 import { StudyOutput } from "@/components/study-output"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { Tooltip } from "@/components/tooltip"
 import { TopBar } from "@/components/top-bar"
-import { deleteJson, getJson, postForm, postJson, readChatStream } from "@/lib/client-api"
-import { fileTooLargeMessage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/constants"
+import { deleteJson, getJson, postJson, readChatStream } from "@/lib/client-api"
 import { formatDate, sourceQuestion } from "@/lib/format"
 import { packStudy, parseStudy, studyRequestLabel, type Amount, type Difficulty, type ReportFormat, type StudyKind } from "@/lib/study"
 import { cn } from "@/lib/utils"
-import type { ChatMessage, ChatSource, DocumentItem, DocumentType, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
+import type { ChatMessage, ChatSource, DocumentItem, LibraryOption, OrgDetails, SessionUser } from "@/types/domain"
 
 const suggestions = [
   "Summarize what this library knows",
   "What are the main topics?",
   "Which points still look incomplete?",
 ]
+
+type LibraryChatItem = {
+  id: string
+  title: string
+  updatedAt: string
+}
 
 export function Workspace({
   user,
@@ -37,11 +43,101 @@ export function Workspace({
   canWrite: boolean
 }) {
   const router = useRouter()
-  const [panel, setPanel] = useState<"sources" | "chat">("chat")
+  const [panel, setPanel] = useState<"library" | "chat">("chat")
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sourcesOpen, setSourcesOpen] = useState(true)
+  const [chatsOpen, setChatsOpen] = useState(true)
   const [sourceItems, setSourceItems] = useState(sources)
+  const [chats, setChats] = useState<LibraryChatItem[]>([])
+  const [activeChatId, setActiveChatId] = useState("")
+  const [chatsError, setChatsError] = useState("")
+  const [creatingChat, setCreatingChat] = useState(false)
+  const [asking, setAsking] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const [sourceError, setSourceError] = useState("")
+  const activeChat = chats.find((chat) => chat.id === activeChatId) ?? null
+
+  useEffect(() => {
+    const sidebar = localStorage.getItem("ai-book-sidebar")
+    const sourcesPanel = localStorage.getItem("ai-book-sources-open")
+    const chatsPanel = localStorage.getItem("ai-book-chats-open")
+    if (sidebar === "hidden") setSidebarOpen(false)
+    if (sourcesPanel === "closed") setSourcesOpen(false)
+    if (chatsPanel === "closed") setChatsOpen(false)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setChatsError("")
+    void getJson<{ chats: LibraryChatItem[] }>(`/api/chats?organizationId=${encodeURIComponent(org.id)}`)
+      .then((result) => {
+        if (cancelled) return
+        setChats(result.chats)
+        setActiveChatId((current) => (current && result.chats.some((chat) => chat.id === current) ? current : result.chats[0]?.id ?? ""))
+      })
+      .catch((caught) => {
+        if (!cancelled) setChatsError(caught instanceof Error ? caught.message : "Chats could not be loaded.")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [org.id])
+
+  function rememberSidebar(open: boolean) {
+    setSidebarOpen(open)
+    localStorage.setItem("ai-book-sidebar", open ? "open" : "hidden")
+    setPanel(open ? "library" : "chat")
+  }
+
+  function rememberSources(open: boolean) {
+    setSourcesOpen(open)
+    localStorage.setItem("ai-book-sources-open", open ? "open" : "closed")
+  }
+
+  function rememberChats(open: boolean) {
+    setChatsOpen(open)
+    localStorage.setItem("ai-book-chats-open", open ? "open" : "closed")
+  }
+
+  async function createChat() {
+    if (creatingChat || asking) return
+    setChatsOpen(true)
+    localStorage.setItem("ai-book-chats-open", "open")
+    setCreatingChat(true)
+    setChatsError("")
+    try {
+      const chat = await postJson<LibraryChatItem>("/api/chats", { organizationId: org.id })
+      setChats((current) => [chat, ...current.filter((item) => item.id !== chat.id)])
+      setActiveChatId(chat.id)
+      setPanel("chat")
+    } catch (caught) {
+      setChatsError(caught instanceof Error ? caught.message : "The chat could not be created.")
+    } finally {
+      setCreatingChat(false)
+    }
+  }
+
+  async function removeChat(chatId: string) {
+    setChatsError("")
+    const result = await deleteJson<{ chat: LibraryChatItem }>(
+      `/api/chats?organizationId=${encodeURIComponent(org.id)}&chatId=${encodeURIComponent(chatId)}`,
+    )
+    setChats((current) => {
+      const next = current.filter((chat) => chat.id !== chatId)
+      return next.some((chat) => chat.id === result.chat.id) ? next : [result.chat, ...next]
+    })
+    setActiveChatId(result.chat.id)
+  }
+
+  function refreshChats() {
+    void getJson<{ chats: LibraryChatItem[] }>(`/api/chats?organizationId=${encodeURIComponent(org.id)}`)
+      .then((result) => {
+        setChats(result.chats)
+        setActiveChatId((current) => (current && result.chats.some((chat) => chat.id === current) ? current : result.chats[0]?.id ?? ""))
+      })
+      .catch(() => undefined)
+  }
 
   useEffect(() => {
     setSourceItems(sources)
@@ -80,22 +176,62 @@ export function Workspace({
           </Link>
         </Tooltip>
       </TopBar>
-      <div className="flex gap-2 border-b border-line px-4 py-2 lg:hidden">
+      <div className="flex gap-2 px-3 py-2 lg:hidden">
         <PanelButton active={panel === "chat"} onClick={() => setPanel("chat")}>
           Ask
         </PanelButton>
-        <PanelButton active={panel === "sources"} onClick={() => setPanel("sources")}>
-          Sources{sourceItems.length > 0 ? ` · ${sourceItems.length}` : ""}
+        <PanelButton
+          active={panel === "library"}
+          onClick={() => {
+            setSidebarOpen(true)
+            setPanel("library")
+          }}
+        >
+          Library
         </PanelButton>
       </div>
-      <div className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={cn("min-h-0 w-full min-w-0 flex-col overflow-x-hidden bg-sidebar text-sidebar-foreground", panel === "sources" ? "flex" : "hidden", "lg:flex")}>
-          <SourceColumn org={org} sources={sourceItems} canWrite={canWrite} sourceError={sourceError} />
+      <div className="flex min-h-0 min-w-0 flex-1 lg:gap-3 lg:p-3">
+        <section
+          className={cn(
+            "min-h-0 w-full min-w-0 flex-col overflow-hidden bg-card text-foreground lg:w-[320px] lg:shrink-0 lg:rounded-3xl lg:border lg:border-line",
+            sidebarOpen && panel === "library" ? "flex" : "hidden",
+            sidebarOpen ? "lg:flex" : "lg:hidden",
+          )}
+        >
+          <LibrarySidebar
+            org={org}
+            sources={sourceItems}
+            canWrite={canWrite}
+            sourceError={sourceError}
+            sourcesOpen={sourcesOpen}
+            chatsOpen={chatsOpen}
+            chats={chats}
+            activeChatId={activeChatId}
+            chatsError={chatsError}
+            creatingChat={creatingChat}
+            asking={asking}
+            onHide={() => rememberSidebar(false)}
+            onSources={rememberSources}
+            onChats={rememberChats}
+            onSelectChat={(chatId) => {
+              if (asking) return
+              setActiveChatId(chatId)
+              setPanel("chat")
+            }}
+            onCreateChat={() => void createChat()}
+            onRemoveChat={(chatId) => void removeChat(chatId).catch((caught) => {
+              setChatsError(caught instanceof Error ? caught.message : "The chat could not be removed.")
+            })}
+          />
         </section>
-        <section className={cn("min-h-0 min-w-0 flex-col", panel === "chat" ? "flex" : "hidden", "lg:flex")}>
+        <section className={cn("min-h-0 min-w-0 flex-1", panel === "chat" ? "flex" : "hidden", "lg:flex")}>
           <ChatPanel
             organizationId={org.id}
             libraryName={org.name}
+            chatId={activeChatId}
+            chatTitle={activeChat?.title || "New chat"}
+            sidebarOpen={sidebarOpen}
+            onShowSidebar={() => rememberSidebar(true)}
             currentUserId={user.id}
             currentUserName={user.name}
             sources={sourceItems}
@@ -106,6 +242,8 @@ export function Workspace({
             indexingCount={sourceItems.filter((source) => source.status === "processing").length}
             failedCount={sourceItems.filter((source) => source.status === "failed").length}
             onRefresh={() => void refreshLibrary()}
+            onPending={setAsking}
+            onActivity={refreshChats}
           />
         </section>
       </div>
@@ -127,7 +265,7 @@ function PanelButton({ active, onClick, children }: { active: boolean; onClick: 
       onClick={onClick}
       className={cn(
         "rounded-full px-3 py-1.5 text-sm font-medium",
-        active ? "bg-accent text-accent-foreground" : "text-muted",
+        active ? "bg-ink text-on-ink" : "text-muted hover:bg-foreground/5",
       )}
     >
       {children}
@@ -135,197 +273,222 @@ function PanelButton({ active, onClick, children }: { active: boolean; onClick: 
   )
 }
 
-function SourceColumn({
+function LibrarySidebar({
   org,
   sources,
   canWrite,
   sourceError,
+  sourcesOpen,
+  chatsOpen,
+  chats,
+  activeChatId,
+  chatsError,
+  creatingChat,
+  asking,
+  onHide,
+  onSources,
+  onChats,
+  onSelectChat,
+  onCreateChat,
+  onRemoveChat,
 }: {
   org: OrgDetails
   sources: DocumentItem[]
   canWrite: boolean
   sourceError: string
+  sourcesOpen: boolean
+  chatsOpen: boolean
+  chats: LibraryChatItem[]
+  activeChatId: string
+  chatsError: string
+  creatingChat: boolean
+  asking: boolean
+  onHide: () => void
+  onSources: (open: boolean) => void
+  onChats: (open: boolean) => void
+  onSelectChat: (chatId: string) => void
+  onCreateChat: () => void
+  onRemoveChat: (chatId: string) => void
 }) {
+  const ready = sources.filter((source) => source.status === "ready").length
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden">
-      <div className="border-b border-white/10 px-4 py-4 sm:px-5">
-        <p className="text-sm text-sidebar-foreground/60">Sources</p>
-        <Tooltip label={org.name} className="max-w-full">
-          <h1 className="mt-1.5 truncate font-display text-3xl leading-none tracking-tight">{org.name}</h1>
-        </Tooltip>
-        <p className="mt-2 text-xs text-sidebar-foreground/60">
-          {sources.filter((source) => source.status === "ready").length} ready to answer
-        </p>
+      <div className="flex items-start justify-between gap-3 px-4 py-4 sm:px-5">
+        <div className="min-w-0">
+          <Tooltip label={org.name} className="max-w-full">
+            <h1 className="truncate text-lg font-medium leading-tight tracking-tight">{org.name}</h1>
+          </Tooltip>
+          <p className="mt-1 text-xs text-muted">{ready} ready to answer</p>
+        </div>
+        <button
+          type="button"
+          onClick={onHide}
+          aria-label="Close sidebar"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-foreground/5 hover:text-foreground"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
       </div>
-      {canWrite ? <SourceComposer organizationId={org.id} /> : null}
-      <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        {sourceError ? <li className="px-2 py-2 text-xs leading-5 text-orange-200">{sourceError}</li> : null}
-        {sources.length === 0 ? (
-          <li className="mx-1 rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center">
-            <p className="font-display text-2xl tracking-tight">No sources yet</p>
-            <p className="mt-2 text-sm leading-6 text-sidebar-foreground/70">
-              {canWrite
-                ? "Add a PDF, a public page, or a note. Questions can use a source after it says Ready."
-                : "An admin or manager adds sources. You can ask once one says Ready."}
-            </p>
-          </li>
-        ) : (
-          sources.map((source) => <SourceRow key={source.id} source={source} canWrite={canWrite} />)
-        )}
-      </ul>
+      <SlideSection title="Sources" count={sources.length} open={sourcesOpen} onToggle={() => onSources(!sourcesOpen)}>
+        <div className="px-4 pb-3 sm:px-5">
+          {canWrite ? <AddSourceButton organizationId={org.id} /> : null}
+        </div>
+        <ul className="space-y-2 px-3 pb-3">
+          {sourceError ? <li className="px-2 py-2 text-xs leading-5 text-danger">{sourceError}</li> : null}
+          {sources.length === 0 ? (
+            <li className="mx-1 rounded-2xl border border-dashed border-line px-4 py-8 text-center">
+              <p className="text-base font-medium">No sources yet</p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                {canWrite
+                  ? "Add a file, a shared file link, a public page, or a note. A new chat answers from sources after they say Ready."
+                  : "An admin or manager adds sources. You can ask once one says Ready."}
+              </p>
+            </li>
+          ) : (
+            sources.map((source) => <SourceRow key={source.id} source={source} canWrite={canWrite} />)
+          )}
+        </ul>
+      </SlideSection>
+      <SlideSection
+        title="Chats"
+        count={chats.length}
+        open={chatsOpen}
+        onToggle={() => onChats(!chatsOpen)}
+        action={
+          <button
+            type="button"
+            onClick={onCreateChat}
+            disabled={creatingChat || asking}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-ink px-3 text-xs font-semibold text-on-ink disabled:opacity-60"
+          >
+            {creatingChat ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
+            New chat
+          </button>
+        }
+      >
+        <p className="px-4 pb-2 text-xs leading-5 text-muted sm:px-5">
+          Each chat answers from the sources in this library.
+        </p>
+        <ul className="space-y-1 px-3 pb-3">
+          {chatsError ? <li className="px-2 py-2 text-xs leading-5 text-danger">{chatsError}</li> : null}
+          {chats.length === 0 ? (
+            <li className="px-2 py-3 text-sm text-muted">No chats yet.</li>
+          ) : (
+            chats.map((chat) => (
+              <ChatRow
+                key={chat.id}
+                chat={chat}
+                active={chat.id === activeChatId}
+                disabled={asking}
+                onSelect={() => onSelectChat(chat.id)}
+                onRemove={() => onRemoveChat(chat.id)}
+              />
+            ))
+          )}
+        </ul>
+      </SlideSection>
       <UsageFooter org={org} />
     </div>
   )
 }
 
-function SourceComposer({ organizationId }: { organizationId: string }) {
-  const router = useRouter()
-  const [mode, setMode] = useState<DocumentType>("file")
-  const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
-  const [url, setUrl] = useState("")
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState("")
-  const [fileError, setFileError] = useState("")
-  const [fileName, setFileName] = useState("")
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (mode === "file") {
-      const selected = new FormData(event.currentTarget).get("file")
-      if (selected instanceof File && selected.size > MAX_UPLOAD_BYTES) {
-        setFileError(fileTooLargeMessage())
-        return
-      }
-    }
-    setPending(true)
-    setError("")
-    try {
-      if (mode === "file") {
-        const form = new FormData(event.currentTarget)
-        form.set("organizationId", organizationId)
-        await postForm("/api/documents", form)
-      } else if (mode === "website") {
-        await postJson("/api/documents", { organizationId, type: "website", title, url })
-      } else {
-        await postJson("/api/documents", { organizationId, type: "text", title, content })
-      }
-      setTitle("")
-      setContent("")
-      setUrl("")
-      setFileName("")
-      router.refresh()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The source could not be added.")
-      router.refresh()
-    } finally {
-      setPending(false)
-    }
-  }
-
+function SlideSection({
+  title,
+  count,
+  open,
+  onToggle,
+  action,
+  children,
+}: {
+  title: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  action?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <form onSubmit={onSubmit} className="min-w-0 space-y-3 border-b border-white/10 px-4 py-4">
-      <div className="grid w-full min-w-0 grid-cols-3 gap-1 rounded-full bg-white/8 p-1">
-        {(
-          [
-            ["file", "File"],
-            ["website", "Site"],
-            ["text", "Note"],
-          ] as const
-        ).map(([value, label]) => (
-          <Tooltip
-            key={value}
-            className="flex min-w-0"
-            label={value === "file" ? `PDF or text file, up to ${MAX_UPLOAD_MB} MB` : value === "website" ? "A public web page" : "Text you paste in"}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMode(value)
-                setFileError("")
-                setError("")
-              }}
-              className={cn(
-                "w-full min-w-0 rounded-full px-2 py-1.5 text-xs font-semibold",
-                mode === value ? "bg-white text-field" : "text-sidebar-foreground/70 hover:text-sidebar-foreground",
-              )}
-            >
-              {label}
-            </button>
-          </Tooltip>
-        ))}
+    <section className={cn("flex min-h-0 flex-col border-t border-line", open && "flex-1")}>
+      <div className="flex items-center gap-2 px-3 py-2 sm:px-4">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-full px-2 py-1.5 text-left hover:bg-foreground/5"
+        >
+          <span className="truncate text-sm font-medium">
+            {title}
+            <span className="ml-2 text-xs font-medium text-muted">{count}</span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted">
+            {open ? "Hide" : "Show"}
+            {open ? <ChevronUp className="h-3.5 w-3.5" aria-hidden /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden />}
+          </span>
+        </button>
+        {action}
       </div>
-      {mode === "file" ? (
-        <div className="min-w-0 space-y-2">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-semibold text-field"
-            >
-              Choose file
-            </button>
-            <span className="min-w-0 truncate text-xs text-sidebar-foreground/80">{fileName || "No file chosen"}</span>
-            <input
-              ref={fileRef}
-              name="file"
-              type="file"
-              required
-              accept=".pdf,.txt,.md,.markdown,text/plain,application/pdf"
-              onChange={(event) => {
-                const selected = event.target.files?.[0]
-                setFileName(selected?.name ?? "")
-                setFileError(selected && selected.size > MAX_UPLOAD_BYTES ? fileTooLargeMessage() : "")
-              }}
-              className="sr-only"
-            />
-          </div>
-          {fileError ? (
-            <p className="text-xs leading-5 text-orange-200" role="alert">
-              {fileError}
-            </p>
-          ) : null}
+      <div className={cn("grid min-h-0 transition-[grid-template-rows] duration-300 ease-out", open ? "flex-1 grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+        <div className="overflow-hidden">
+          <div className={cn("overflow-y-auto", open && "h-full max-h-full")}>{children}</div>
         </div>
-      ) : null}
-      {mode === "website" ? (
-        <input
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          required
-          type="url"
-          placeholder="https://example.com/guide"
-          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
-        />
-      ) : null}
-      {mode !== "file" ? (
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          required={mode === "text"}
-          placeholder={mode === "text" ? "Note title" : "Title (optional)"}
-          className="w-full rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
-        />
-      ) : null}
-      {mode === "text" ? (
-        <textarea
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          required
-          rows={4}
-          placeholder="Paste a FAQ, policy, or note."
-          className="w-full resize-none rounded-2xl border border-white/10 bg-white px-3 py-2 text-sm text-field outline-none transition focus:border-accent"
-        />
-      ) : null}
-      <button
-        type="submit"
-        disabled={pending || Boolean(fileError)}
-        className="inline-flex h-10 w-full max-w-full items-center justify-center rounded-full bg-copper px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60 dark:text-[#1a0d0b] sm:hover:-translate-y-0.5"
-      >
-        {pending ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />Indexing…</> : "Add to library"}
+      </div>
+    </section>
+  )
+}
+
+function ChatRow({
+  chat,
+  active,
+  disabled,
+  onSelect,
+  onRemove,
+}: {
+  chat: LibraryChatItem
+  active: boolean
+  disabled: boolean
+  onSelect: () => void
+  onRemove: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <li className={cn("flex min-w-0 items-center gap-1 rounded-xl px-2 py-1.5", active ? "bg-wash" : "hover:bg-foreground/5")}>
+      <button type="button" onClick={onSelect} disabled={disabled} className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 text-left disabled:opacity-60">
+        <MessageSquare className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-sm">{chat.title}</span>
       </button>
-      {error ? <p className="text-xs leading-5 text-orange-200">{error}</p> : null}
-    </form>
+      {confirming ? (
+        <button type="button" onClick={onRemove} className="shrink-0 text-xs font-semibold text-danger">
+          Remove
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={disabled}
+          aria-label={`Remove ${chat.title}`}
+          className="shrink-0 text-muted disabled:opacity-40"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </li>
+  )
+}
+
+function AddSourceButton({ organizationId }: { organizationId: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-10 w-full items-center justify-center rounded-full bg-ink px-4 text-sm font-medium text-on-ink hover:bg-accent hover:text-accent-foreground"
+      >
+        <Plus className="mr-2 h-4 w-4" aria-hidden />
+        Add source
+      </button>
+      {open ? <AddSourceDialog organizationId={organizationId} onClose={() => setOpen(false)} /> : null}
+    </>
   )
 }
 
@@ -337,15 +500,15 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
   const kind = source.type === "website" ? "Site" : source.type === "text" ? "Note" : "File"
   const status =
     source.status === "ready"
-      ? { label: "Ready", detail: `${source.chunkCount} ${source.chunkCount === 1 ? "chunk" : "chunks"}`, tone: "bg-emerald-400/15 text-emerald-100" }
+      ? { label: "Ready", detail: `${source.chunkCount} ${source.chunkCount === 1 ? "chunk" : "chunks"}`, tone: "bg-ready/10 text-ready" }
       : source.status === "processing"
-        ? { label: "Indexing", detail: "Still reading this source", tone: "bg-copper/30 text-orange-100" }
-        : { label: "Failed", detail: "Could not be indexed", tone: "bg-red-400/15 text-orange-100" }
+        ? { label: "Indexing", detail: "Still reading this source", tone: "bg-copper/10 text-copper" }
+        : { label: "Failed", detail: "Could not be indexed", tone: "bg-danger/10 text-danger" }
 
   return (
-    <li className="min-w-0 overflow-hidden rounded-2xl bg-white/6 px-3 py-3 transition hover:bg-white/12">
+    <li className="min-w-0 overflow-hidden rounded-2xl px-3 py-2.5 hover:bg-foreground/5">
       <div className="flex items-start gap-2">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-sidebar-foreground/70" />
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <Tooltip label={source.title} className="block min-w-0 flex-1">
@@ -357,11 +520,11 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
               </span>
             </Tooltip>
           </div>
-          <p className="mt-1 text-xs text-sidebar-foreground/55">
+          <p className="mt-1 text-xs text-muted">
             {kind}, {status.detail}, {formatDate(source.createdAt)}
           </p>
           {source.status === "failed" && source.errorMessage ? (
-            <p className="mt-1 text-xs leading-5 text-orange-200">{source.errorMessage}</p>
+            <p className="mt-1 text-xs leading-5 text-danger">{source.errorMessage}</p>
           ) : null}
         </div>
       </div>
@@ -381,13 +544,13 @@ function SourceRow({ source, canWrite }: { source: DocumentItem; canWrite: boole
                   setConfirming(false)
                 }
               }}
-              className="text-xs font-semibold text-orange-200"
+              className="text-xs font-semibold text-danger"
             >
               {pending ? <><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" aria-hidden />Removing…</> : "Confirm remove"}
             </button>
           ) : (
             <Tooltip label={`Remove ${source.title}`}>
-              <button type="button" onClick={() => setConfirming(true)} className="text-sidebar-foreground/55" aria-label={`Remove ${source.title}`}>
+              <button type="button" onClick={() => setConfirming(true)} className="text-muted hover:text-foreground" aria-label={`Remove ${source.title}`}>
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
@@ -402,7 +565,7 @@ function UsageFooter({ org }: { org: OrgDetails }) {
   const used = org.usage.files + org.usage.websites + org.usage.texts
   const cap = org.limits.maxFiles + org.limits.maxWebsites + org.limits.maxTexts
   return (
-    <div className="shrink-0 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-5 break-words text-sidebar-foreground/65 sm:px-5">
+    <div className="shrink-0 border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-5 break-words text-muted sm:px-5">
       <p>
         {used}/{cap} sources · {org.usage.chunks}/{org.limits.maxChunks} chunks · {org.queries}{" "}
         {org.queries === 1 ? "question" : "questions"}
@@ -436,8 +599,8 @@ function EmptyLibrary({
         : "An admin or manager needs to add a source. You can ask after it says Ready."
 
   return (
-    <div className="rounded-3xl border border-dashed border-line bg-card px-6 py-8">
-      <h2 className="font-display text-4xl tracking-tight">{title}</h2>
+    <div className="px-2 py-6">
+      <h2 className="text-2xl font-medium tracking-tight">{title}</h2>
       <p className="mt-3 max-w-md text-sm leading-6 text-muted">{detail}</p>
       {waiting ? (
         <button
@@ -457,6 +620,10 @@ function EmptyLibrary({
 function ChatPanel({
   organizationId,
   libraryName,
+  chatId,
+  chatTitle,
+  sidebarOpen,
+  onShowSidebar,
   currentUserId,
   currentUserName,
   sources,
@@ -467,9 +634,15 @@ function ChatPanel({
   indexingCount,
   failedCount,
   onRefresh,
+  onPending,
+  onActivity,
 }: {
   organizationId: string
   libraryName: string
+  chatId: string
+  chatTitle: string
+  sidebarOpen: boolean
+  onShowSidebar: () => void
   currentUserId: string
   currentUserName: string
   sources: DocumentItem[]
@@ -480,6 +653,8 @@ function ChatPanel({
   indexingCount: number
   failedCount: number
   onRefresh: () => void
+  onPending: (pending: boolean) => void
+  onActivity: () => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
@@ -498,6 +673,8 @@ function ChatPanel({
   const [confirmClear, setConfirmClear] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState("")
+  const [railOpen, setRailOpen] = useState(true)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const readySources = sources.filter((source) => source.status === "ready")
@@ -508,14 +685,32 @@ function ChatPanel({
     : []
 
   useEffect(() => {
+    if (localStorage.getItem("ai-book-studio") === "closed") setRailOpen(false)
+  }, [])
+
+  function setRail(open: boolean) {
+    setRailOpen(open)
+    localStorage.setItem("ai-book-studio", open ? "open" : "closed")
+  }
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: streamingId ? "auto" : "smooth" })
   }, [messages, pending, streamingId])
 
   useEffect(() => {
+    if (!chatId) {
+      setLoaded(true)
+      setMessages([])
+      return
+    }
     let cancelled = false
     setLoaded(false)
     setMessages([])
-    void getJson<{ messages: ChatMessage[] }>(`/api/chat?organizationId=${encodeURIComponent(organizationId)}`)
+    setError("")
+    setConfirmClear(false)
+    void getJson<{ messages: ChatMessage[] }>(
+      `/api/chat?organizationId=${encodeURIComponent(organizationId)}&chatId=${encodeURIComponent(chatId)}`,
+    )
       .then((result) => {
         if (!cancelled) setMessages(result.messages)
       })
@@ -528,13 +723,15 @@ function ChatPanel({
     return () => {
       cancelled = true
     }
-  }, [organizationId])
+  }, [organizationId, chatId])
 
   useEffect(() => {
-    if (reloadToken === 0) return
+    if (reloadToken === 0 || !chatId) return
     let cancelled = false
     setError("")
-    void getJson<{ messages: ChatMessage[] }>(`/api/chat?organizationId=${encodeURIComponent(organizationId)}`)
+    void getJson<{ messages: ChatMessage[] }>(
+      `/api/chat?organizationId=${encodeURIComponent(organizationId)}&chatId=${encodeURIComponent(chatId)}`,
+    )
       .then((result) => {
         if (!cancelled) setMessages(result.messages)
       })
@@ -544,7 +741,7 @@ function ChatPanel({
     return () => {
       cancelled = true
     }
-  }, [organizationId, reloadToken])
+  }, [organizationId, chatId, reloadToken])
 
   function syncMention(value: string, caret: number) {
     const next = activeMention(value, caret)
@@ -572,7 +769,7 @@ function ChatPanel({
     const shown = text.trim()
     const scoped = scope && sourceQuestion(shown, scope.token.slice(1)) !== shown ? scope : null
     const query = scoped ? sourceQuestion(shown, scoped.token.slice(1)) : shown
-    if (!query || pending) {
+    if (!chatId || !query || pending) {
       if (shown && !query) setError(output ? "Add a prompt after the source name." : "Add a question after the source name.")
       return
     }
@@ -595,6 +792,7 @@ function ChatPanel({
     }
     setMessages((current) => [...current, userMessage])
     setPending(true)
+    onPending(true)
     let assistantId = ""
     let replySources: ChatSource[] | undefined
     try {
@@ -603,6 +801,7 @@ function ChatPanel({
         {
           query: shown,
           organizationId,
+          chatId,
           ...(scoped ? { documentId: scoped.id } : {}),
           ...(task
             ? {
@@ -638,6 +837,7 @@ function ChatPanel({
           )
           return
         }
+        if (event.type === "done") onActivity()
         if (event.type === "done" && assistantId) {
           const id = assistantId
           const nextSources = replySources
@@ -666,17 +866,50 @@ function ChatPanel({
       setStreamingStudy("")
       setSearchLabel("")
       setPending(false)
+      onPending(false)
     }
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-3 sm:gap-3 sm:px-8">
-        <div className="min-w-0">
-          <Tooltip label={libraryName} className="max-w-full">
-            <p className="truncate text-sm font-medium">Ask {libraryName}</p>
-          </Tooltip>
-          <p className="hidden text-xs text-muted sm:block">Visible to everyone in this library</p>
+    <div className="flex min-h-0 min-w-0 flex-1 lg:gap-3">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card lg:rounded-3xl lg:border lg:border-line">
+      <div className="flex items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onShowSidebar}
+            aria-label="Open sidebar"
+            className={cn(
+              "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-foreground hover:border-accent",
+              sidebarOpen && "lg:hidden",
+            )}
+          >
+            <Menu className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Open studio"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-foreground/5 xl:hidden"
+          >
+            <PanelRight className="h-4 w-4" aria-hidden />
+          </button>
+          {railOpen ? null : (
+            <button
+              type="button"
+              onClick={() => setRail(true)}
+              aria-label="Open studio"
+              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-foreground/5 xl:inline-flex"
+            >
+              <PanelRight className="h-4 w-4" aria-hidden />
+            </button>
+          )}
+          <div className="min-w-0">
+            <Tooltip label={chatTitle} className="max-w-full">
+              <p className="truncate text-base font-medium">{chatTitle}</p>
+            </Tooltip>
+            <p className="hidden text-xs text-muted sm:block">Answers from the sources in {libraryName}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {confirmClear ? (
@@ -686,10 +919,11 @@ function ChatPanel({
               onClick={() => {
                 setClearing(true)
                 setError("")
-                void deleteJson(`/api/chat?organizationId=${encodeURIComponent(organizationId)}`)
+                void deleteJson(`/api/chat?organizationId=${encodeURIComponent(organizationId)}&chatId=${encodeURIComponent(chatId)}`)
                   .then(() => {
                     setMessages([])
                     setConfirmClear(false)
+                    onActivity()
                   })
                   .catch((caught) => {
                     setError(caught instanceof Error ? caught.message : "The chat could not be cleared.")
@@ -701,12 +935,12 @@ function ChatPanel({
               {clearing ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />Clearing…</> : "Confirm clear"}
             </button>
           ) : (
-            <Tooltip label="Clears this chat for everyone in the library">
+            <Tooltip label="Clears this chat">
               <button
                 type="button"
                 onClick={() => setConfirmClear(true)}
                 disabled={pending || refreshing || messages.length === 0}
-                className="inline-flex h-9 items-center rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-danger disabled:opacity-50"
+                className="inline-flex h-9 items-center rounded-full px-3 text-sm font-medium text-muted hover:bg-foreground/5 disabled:opacity-40"
               >
                 Clear
               </button>
@@ -717,7 +951,7 @@ function ChatPanel({
               type="button"
               onClick={onRefresh}
               disabled={pending || refreshing || clearing}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-card px-3 text-sm font-medium transition hover:border-accent disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium text-muted hover:bg-foreground/5 disabled:opacity-40"
             >
               <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
               <span className="hidden sm:inline">Refresh</span>
@@ -726,7 +960,7 @@ function ChatPanel({
           </Tooltip>
         </div>
       </div>
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-6 sm:px-8 sm:py-8">
+      <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-4 py-6 sm:px-8">
         {!loaded && messages.length === 0 ? (
           <p className="mx-auto flex max-w-2xl items-center gap-2 text-sm text-muted">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -744,27 +978,30 @@ function ChatPanel({
                 refreshing={refreshing}
               />
             ) : (
-              <>
-                <h2 className="rise font-display text-4xl tracking-tight sm:text-5xl">What do you want to know about {libraryName}?</h2>
-                <p className="mt-3 text-sm text-muted">{readyCount} {readyCount === 1 ? "source is" : "sources are"} ready.</p>
-                <div className="mt-8 flex flex-wrap gap-2">
+              <div className="pt-10 sm:pt-16">
+                <h2 className="max-w-[18ch] text-3xl font-medium tracking-tight sm:text-4xl">What do you want to know?</h2>
+                <p className="mt-3 max-w-md text-sm leading-6 text-muted">
+                  {readyCount} {readyCount === 1 ? "source is" : "sources are"} ready in {libraryName}. Answers stay inside that material.
+                </p>
+                <div className="mt-8 flex flex-col items-start gap-2">
                   {suggestions.map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
                       onClick={() => void ask(suggestion)}
-                      className="rounded-full border border-line bg-card px-4 py-2 text-sm transition hover:-translate-y-0.5 hover:border-accent hover:bg-accent hover:text-accent-foreground"
+                      className="rounded-full bg-foreground/5 px-4 py-2 text-left text-sm hover:bg-wash"
                     >
                       {suggestion}
                     </button>
                   ))}
                 </div>
-              </>
+              </div>
             )}
           </div>
         ) : (
           messages.map((message) => {
             const mine = message.role === "user" && message.authorId === currentUserId
+            const fromUser = message.role === "user"
             const study = message.role === "assistant" ? parseStudy(message.content) : null
             const writingStudy = message.id === streamingId && streamingStudy !== ""
             const wide = Boolean(study)
@@ -774,16 +1011,16 @@ function ChatPanel({
             <article key={message.id} className={cn("mx-auto max-w-2xl", mine ? "flex justify-end" : "")}>
               <div
                 className={cn(
-                  wide ? "w-full min-w-0" : "max-w-[90%] break-words rounded-3xl px-4 py-3 text-sm leading-6",
-                  mine ? "bg-accent text-accent-foreground whitespace-pre-wrap" : wide ? "" : "reading border border-line bg-card",
+                  wide ? "w-full min-w-0" : "max-w-[min(100%,36rem)] break-words px-4 py-3 text-sm leading-6",
+                  fromUser ? "rounded-3xl bg-foreground/6 whitespace-pre-wrap" : wide ? "" : "reading",
                 )}
               >
                 {message.role === "user" && message.authorName ? (
-                  <p className={cn("mb-1 text-xs font-semibold", mine ? "text-accent-foreground/80" : "text-copper")}>
+                  <p className={cn("mb-1 text-xs font-medium", mine ? "text-muted" : "text-accent")}>
                     {mine ? "You" : message.authorName}
                   </p>
                 ) : null}
-                <Copyable enabled={canCopy} onDark={mine}>
+                <Copyable enabled={canCopy}>
                 {message.role === "assistant" ? (
                   <>
                     {writingStudy ? (
@@ -806,7 +1043,7 @@ function ChatPanel({
                   </>
                 ) : requestLine ? (
                   <>
-                    <p className="mb-1 text-xs font-semibold text-accent-foreground/80">{requestLine[0]}</p>
+                    <p className="mb-1 text-xs font-medium text-muted">{requestLine[0]}</p>
                     {message.content.slice(requestLine[0].length).trim()}
                   </>
                 ) : (
@@ -828,7 +1065,7 @@ function ChatPanel({
         <div ref={endRef} />
       </div>
       <form
-        className="border-t border-line bg-card/80 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-4"
+        className="px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
         onSubmit={(event: FormEvent) => {
           event.preventDefault()
           void ask(draft)
@@ -855,7 +1092,7 @@ function ChatPanel({
                           index === mentionIndex ? "bg-accent/15" : "hover:bg-accent/10",
                         )}
                       >
-                        <Icon className="h-4 w-4 shrink-0 text-copper" />
+                        <Icon className="h-4 w-4 shrink-0 text-accent" />
                         <span className="truncate">{source.title}</span>
                       </button>
                     </li>
@@ -864,18 +1101,7 @@ function ChatPanel({
               )}
             </ul>
           ) : null}
-          <StudioBar
-            output={output}
-            format={reportFormat}
-            difficulty={difficulty}
-            amount={amount}
-            disabled={pending || readyCount === 0}
-            onOutput={setOutput}
-            onFormat={setReportFormat}
-            onDifficulty={setDifficulty}
-            onAmount={setAmount}
-          />
-          <div className="composer-shell flex items-end gap-1 rounded-[1.75rem] border border-line bg-card p-1.5">
+          <div className="composer-shell flex items-end gap-1 rounded-[1.75rem] border border-line p-1.5">
           <label className="sr-only" htmlFor="question">
             Question
           </label>
@@ -928,7 +1154,7 @@ function ChatPanel({
               disabled={pending || !draft.trim()}
               aria-busy={pending}
               className={cn(
-                "grid h-11 w-11 shrink-0 place-items-center self-end rounded-full bg-ink text-on-ink transition hover:-translate-y-0.5 hover:bg-accent hover:text-accent-foreground",
+                "grid h-11 w-11 shrink-0 place-items-center self-end rounded-full bg-ink text-on-ink hover:bg-accent hover:text-accent-foreground",
                 pending ? "disabled:translate-y-0 disabled:bg-ink disabled:text-on-ink" : "disabled:translate-y-0 disabled:bg-line disabled:text-muted",
               )}
               aria-label={pending ? "Writing the answer" : "Send question"}
@@ -939,6 +1165,39 @@ function ChatPanel({
           </div>
         </div>
       </form>
+      {sheetOpen ? (
+        <div className="absolute inset-0 z-20 flex flex-col bg-card xl:hidden">
+          <StudioBar
+            output={output}
+            format={reportFormat}
+            difficulty={difficulty}
+            amount={amount}
+            disabled={pending || readyCount === 0}
+            onOutput={setOutput}
+            onFormat={setReportFormat}
+            onDifficulty={setDifficulty}
+            onAmount={setAmount}
+            onClose={() => setSheetOpen(false)}
+          />
+        </div>
+      ) : null}
+      </div>
+      {railOpen ? (
+        <aside className="hidden w-[300px] shrink-0 flex-col overflow-hidden bg-card xl:flex xl:rounded-3xl xl:border xl:border-line">
+          <StudioBar
+            output={output}
+            format={reportFormat}
+            difficulty={difficulty}
+            amount={amount}
+            disabled={pending || readyCount === 0}
+            onOutput={setOutput}
+            onFormat={setReportFormat}
+            onDifficulty={setDifficulty}
+            onAmount={setAmount}
+            onClose={() => setRail(false)}
+          />
+        </aside>
+      ) : null}
     </div>
   )
 }

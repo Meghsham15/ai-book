@@ -20,10 +20,13 @@ Do not add outside knowledge, images, slides, or audio.
 If the passages do not contain enough, return {"columns":[],"rows":[]}.
 Return one JSON object and no other text.`
 
-const QUIZ_PROMPT = `You write a multiple-choice quiz for one shared library.
-Every question has exactly four options and one correct answer.
-Use only the numbered sources. Do not add outside knowledge, images, slides, or audio.
-If the sources do not contain enough, return {"questions":[]}.
+const QUIZ_PROMPT = `You write a multiple-choice quiz from the facts in the numbered passages.
+Test those facts: names, dates, steps, descriptions, and definitions.
+Do not ask which source, document, or citation number a fact came from.
+A choice is one of those facts. It is never a citation such as [1] and never only a document title.
+The citation field is separate from the choices.
+Do not add outside knowledge, images, slides, or audio.
+If the passages do not contain enough facts, return {"questions":[]}.
 Return one JSON object and no other text.`
 
 export function buildChatMessages(input: {
@@ -40,7 +43,8 @@ export function buildChatMessages(input: {
     if (budget < 200) break
     const text = source.text.slice(0, Math.min(source.text.length, budget))
     budget -= text.length
-    blocks.push(input.task?.kind === "table" ? `[${source.index}]\n${text}` : `[${source.index}] ${source.title}\n${text}`)
+    const hideTitle = input.task?.kind === "table" || input.task?.kind === "quiz"
+    blocks.push(hideTitle ? `[${source.index}]\n${text}` : `[${source.index}] ${source.title}\n${text}`)
   }
 
   const history = input.history.slice(-8).map((item) => {
@@ -62,7 +66,9 @@ export function buildChatMessages(input: {
         input.scopeTitle
           ? input.task?.kind === "table"
             ? `These passages are the only source. Do not write the title "${input.scopeTitle}" in the table.\n`
-            : `Use only "${input.scopeTitle}".\n`
+            : input.task?.kind === "quiz"
+              ? `These passages are the only material. Ask about what they say, not about the title "${input.scopeTitle}".\n`
+              : `Use only "${input.scopeTitle}".\n`
           : ""
       }${request}`,
     ),

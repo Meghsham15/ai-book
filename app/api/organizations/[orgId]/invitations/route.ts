@@ -10,7 +10,7 @@ export const DELETE = withApi<Context>(async (request, context) => {
   const { orgId } = await context.params
   const { org } = await requireOrgAccess(orgId, ["admin"])
   const invitationId = new URL(request.url).searchParams.get("id")
-  if (!invitationId) throw new UserInputError("Choose an invitation to cancel.")
+  if (!invitationId) throw new UserInputError("Choose an invitation to cancel.", "INVITE_ID_INVALID")
   await revokeInvitation(org._id, invitationId)
   return NextResponse.json({ ok: true })
 })

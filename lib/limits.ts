@@ -65,6 +65,7 @@ export async function reserveDocumentSlot(orgId: string, type: DocumentType) {
   const limit = type === "file" ? limits.maxFiles : type === "website" ? limits.maxWebsites : limits.maxTexts
   throw new LimitError(
     `This library already has the maximum of ${limit} ${sourceLabel(type)}. Remove a source to add another.`,
+    "SOURCE_LIMIT",
   )
 }
 
@@ -92,21 +93,22 @@ export async function reserveChunksOrThrow(orgId: string, count: number) {
   const usage = readUsage(org?.usage)
   throw new LimitError(
     `This library can store ${limits.maxChunks} chunks and already uses ${usage.chunks}. This source needs ${count} more. Remove a source to make room.`,
+    "CHUNK_LIMIT",
   )
 }
 
 export function assertLimitsCoverUsage(limits: Limits, usage: Usage) {
   if (limits.maxFiles < usage.files) {
-    throw new LimitError(`The file limit can't be lower than the ${usage.files} files already stored.`)
+    throw new LimitError(`The file limit can't be lower than the ${usage.files} files already stored.`, "LIMIT_BELOW_USAGE")
   }
   if (limits.maxWebsites < usage.websites) {
-    throw new LimitError(`The website limit can't be lower than the ${usage.websites} websites already stored.`)
+    throw new LimitError(`The website limit can't be lower than the ${usage.websites} websites already stored.`, "LIMIT_BELOW_USAGE")
   }
   if (limits.maxTexts < usage.texts) {
-    throw new LimitError(`The note limit can't be lower than the ${usage.texts} notes already stored.`)
+    throw new LimitError(`The note limit can't be lower than the ${usage.texts} notes already stored.`, "LIMIT_BELOW_USAGE")
   }
   if (limits.maxChunks < usage.chunks) {
-    throw new LimitError(`The chunk limit can't be lower than the ${usage.chunks} chunks already stored.`)
+    throw new LimitError(`The chunk limit can't be lower than the ${usage.chunks} chunks already stored.`, "LIMIT_BELOW_USAGE")
   }
 }
 

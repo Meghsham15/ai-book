@@ -26,7 +26,7 @@ export async function sendInvitationEmail(input: {
   const user = process.env.SMTP_USER?.trim() || from
   const pass = process.env.SMTP_PASS?.trim()
   if (!from || !user || !pass) {
-    throw new ConfigError("Add SMTP_PASS, a Gmail app password for the invitation sender, before emails can be sent.")
+    throw new ConfigError("Add SMTP_PASS, a Gmail app password for the invitation sender, before emails can be sent.", "SMTP_MISSING")
   }
 
   const transfer = input.kind === "transfer"
@@ -77,6 +77,6 @@ export async function sendInvitationEmail(input: {
     })
   } catch (error) {
     console.error("Invitation email failed", error instanceof Error ? error.message : "unknown error")
-    throw new UpstreamError("The invitation was saved, but the email could not be sent. Check the sender mailbox settings.")
+    throw new UpstreamError("The invitation was saved, but the email could not be sent. Check the sender mailbox settings.", "INVITE_EMAIL_FAILED")
   }
 }

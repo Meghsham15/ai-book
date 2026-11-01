@@ -15,12 +15,12 @@ export function TopBar({ user, children }: { user: SessionUser; children?: React
   const onLibraries = pathname === "/dashboard"
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line bg-card/80 px-3 shadow-[0_10px_40px_-28px_color-mix(in_srgb,var(--accent)_70%,transparent)] sm:gap-3 sm:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line bg-card px-3 sm:gap-3 sm:px-5">
       <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
         <Tooltip label="Go to your libraries">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5" aria-label="AI Book, go to libraries">
             <BrandMark />
-            <span className="hidden font-display text-xl leading-none tracking-tight text-foreground sm:inline">AI Book</span>
+            <span className="hidden text-base font-medium tracking-tight text-foreground sm:inline">AI Book</span>
           </Link>
         </Tooltip>
         <Link

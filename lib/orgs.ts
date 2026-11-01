@@ -6,6 +6,7 @@ import { activeVectorIndexName } from "@/lib/vector-index"
 import { AuthzError, UserInputError } from "@/lib/errors"
 import { sameId } from "@/lib/limits"
 import { ChatTurn } from "@/lib/models/chat-turn"
+import { Conversation } from "@/lib/models/conversation"
 import { Chunk } from "@/lib/models/chunk"
 import { NvidiaChunk } from "@/lib/models/nvidia-chunk"
 import { DocumentModel } from "@/lib/models/document"
@@ -48,15 +49,15 @@ export async function createOrganization(userId: string, name: string) {
 
 export async function renameOrganization(orgId: mongoose.Types.ObjectId, name: string) {
   const org = await Organization.findByIdAndUpdate(orgId, { name }, { new: true })
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   return org
 }
 
 export async function deleteOrganization(orgId: mongoose.Types.ObjectId, actorId: string) {
   const org = await Organization.findById(orgId)
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   if (!sameId(org.ownerId, actorId)) {
-    throw new AuthzError("Only the owner can delete this library.", 403)
+    throw new AuthzError("Only the owner can delete this library.", 403, "OWNER_REQUIRED")
   }
 
   const session = await mongoose.startSession()
@@ -79,10 +80,11 @@ async function removeLibraryRecords(orgId: mongoose.Types.ObjectId, session?: mo
   await Chunk.deleteMany(filter, options)
   await DocumentModel.deleteMany(filter, options)
   await ChatTurn.deleteMany(filter, options)
+  await Conversation.deleteMany(filter, options)
   await Invitation.deleteMany(filter, options)
   await Membership.deleteMany(filter, options)
   const removed = await Organization.deleteOne({ _id: orgId }, options)
-  if (removed.deletedCount === 0) throw new AuthzError("This library was already deleted.", 404)
+  if (removed.deletedCount === 0) throw new AuthzError("This library was already deleted.", 404, "LIBRARY_DELETED")
 }
 
 function transactionsUnsupported(error: unknown) {
@@ -92,40 +94,40 @@ function transactionsUnsupported(error: unknown) {
 
 export async function updateMemberRole(orgId: mongoose.Types.ObjectId, userId: string, role: Role) {
   const org = await Organization.findById(orgId)
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   if (sameId(org.ownerId, userId) && role !== "admin") {
-    throw new UserInputError("Transfer ownership before changing the owner's role.")
+    throw new UserInputError("Transfer ownership before changing the owner's role.", "TRANSFER_BEFORE_ROLE")
   }
 
   const membership = await Membership.findOne({ organizationId: orgId, userId })
-  if (!membership) throw new AuthzError("That person is not in this library.", 404)
+  if (!membership) throw new AuthzError("That person is not in this library.", 404, "MEMBER_NOT_FOUND")
   membership.role = role
   await membership.save()
 }
 
 export async function removeOrganizationMember(orgId: mongoose.Types.ObjectId, userId: string) {
   const org = await Organization.findById(orgId)
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   if (sameId(org.ownerId, userId)) {
-    throw new UserInputError("Transfer ownership before removing the owner.")
+    throw new UserInputError("Transfer ownership before removing the owner.", "TRANSFER_BEFORE_REMOVE")
   }
 
   const result = await Membership.deleteOne({ organizationId: orgId, userId })
-  if (result.deletedCount === 0) throw new AuthzError("That person is not in this library.", 404)
+  if (result.deletedCount === 0) throw new AuthzError("That person is not in this library.", 404, "MEMBER_NOT_FOUND")
 }
 
 export async function transferOrganization(orgId: mongoose.Types.ObjectId, actorId: string, nextOwnerId: string) {
   const org = await Organization.findById(orgId)
-  if (!org) throw new AuthzError("Organization not found.", 404)
+  if (!org) throw new AuthzError("Organization not found.", 404, "LIBRARY_NOT_FOUND")
   if (!sameId(org.ownerId, actorId)) {
-    throw new AuthzError("Only the owner can transfer this library.", 403)
+    throw new AuthzError("Only the owner can transfer this library.", 403, "OWNER_REQUIRED")
   }
   if (sameId(org.ownerId, nextOwnerId)) {
-    throw new UserInputError("You already own this library.")
+    throw new UserInputError("You already own this library.", "ALREADY_OWNER")
   }
 
   const membership = await Membership.findOne({ organizationId: orgId, userId: nextOwnerId })
-  if (!membership) throw new UserInputError("Choose someone who is already a member.")
+  if (!membership) throw new UserInputError("Choose someone who is already a member.", "TRANSFER_TARGET_REQUIRED")
   membership.role = "admin"
   await membership.save()
   org.ownerId = new mongoose.Types.ObjectId(nextOwnerId)

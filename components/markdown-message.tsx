@@ -229,8 +229,8 @@ function CitationMark({ markId, citation, source }: { markId: string; citation: 
           if (event.currentTarget.matches(":focus-visible")) setFocus(true)
         }}
         onBlur={() => setFocus(false)}
-        className={`mx-0.5 inline-flex h-5 touch-manipulation items-center justify-center border px-1 align-baseline text-[11px] font-semibold leading-none transition [@media(hover:hover)]:hover:-translate-y-px ${
-          open ? "border-copper bg-copper text-white dark:text-[#1a0d0b]" : "border-copper/40 bg-copper/10 text-copper"
+        className={`mx-0.5 inline-flex h-5 min-w-5 touch-manipulation items-center justify-center rounded-full px-1 align-baseline text-[11px] font-semibold leading-none ${
+          open ? "bg-accent text-accent-foreground" : "bg-wash text-accent"
         }`}
         aria-expanded={open}
         aria-label={`Source ${citation}, ${source.title}${place ? `, ${place}` : ""}`}

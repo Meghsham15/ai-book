@@ -24,6 +24,6 @@ export async function requireUser() {
 
 export async function requireApiUser() {
   const user = await getSessionUser()
-  if (!user) throw new AuthzError("Sign in to continue.", 401)
+  if (!user) throw new AuthzError("Sign in to continue.", 401, "AUTH_REQUIRED")
   return user
 }

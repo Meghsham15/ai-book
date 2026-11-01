@@ -72,15 +72,18 @@ Return one JSON object and no Markdown table, in this shape:
 {"columns":["Topic","Fact","Source"],"rows":[["the topic named in the passage","the fact, formula, or answer written in that passage","[1]"]]}
 Every row has one cell per column. If the passages do not contain enough, return {"columns":[],"rows":[]}.`
   }
-  return `Create exactly ${count} multiple-choice questions grounded in the sources.
+  return `Create exactly ${count} multiple-choice questions from the facts in the passages.
 ${DIFFICULTY[task.difficulty]}
-Every question has exactly four choices and one correct answer. The answer is the index of the correct choice, starting at 0.
+Ask about a name, date, step, description, or other fact written in the passages.
+Do not ask which source, document, page, or citation the fact came from.
+Every question has exactly four choices and one correct answer. Each choice is a fact, not a citation such as [1] and not only a document title.
+The answer is the index of the correct choice, starting at 0.
 Put the correct choice in a different position for each question.
 Do not write a data table. Do not write a short-answer question.
-Each question needs an explanation and a citation such as [1].
+Each question needs an explanation of the fact and a citation such as [1] in the citation field only.
 Return one JSON object and no other text, in this shape:
-{"questions":[{"prompt":"...","format":"choice","choices":["...","...","...","..."],"answer":2,"explanation":"...","hint":"","citation":"[1]"}]}
-If the sources do not contain enough, return {"questions":[]}.`
+{"questions":[{"prompt":"What does the notes app store?","format":"choice","choices":["Music files","Sports scores","Sensitive information","Printed books"],"answer":2,"explanation":"The passage says the notes app stores sensitive information.","hint":"","citation":"[1]"}]}
+If the passages do not contain enough facts, return {"questions":[]}.`
 }
 
 function reportBrief(format: ReportFormat) {
@@ -262,6 +265,7 @@ function toQuiz(value: unknown): StudyPack | null {
     const hint = clean(row?.hint)
     const citation = clean(row?.citation)
     if (row?.format !== "short" && choices.length >= 2) {
+      if (!testsTheMaterial(prompt, choices)) continue
       const answer = choiceIndex(row?.answer, choices)
       if (answer < 0) continue
       const placed = placeAnswer(prompt, choices, answer)
@@ -273,6 +277,13 @@ function toQuiz(value: unknown): StudyPack | null {
     parsed.push({ prompt, format: "short", choices: [], answer, explanation, hint, citation })
   }
   return { kind: "quiz", questions: parsed }
+}
+
+function testsTheMaterial(prompt: string, choices: string[]) {
+  if (/\b(which|what)\s+(source|document|file|passage|citation|page)\b/i.test(prompt)) return false
+  if (/\bsource\s+(describes|says|mentions|contains|combines|includes)\b/i.test(prompt)) return false
+  const markers = choices.filter((choice) => /^\[\d+\]$/.test(choice) || /^\d+$/.test(choice))
+  return markers.length < Math.ceil(choices.length / 2)
 }
 
 function placeAnswer(prompt: string, choices: string[], answer: number) {
